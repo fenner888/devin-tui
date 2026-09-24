@@ -58,6 +58,19 @@ const MODES = [
 	{id: 'bypass', name: 'Bypass Permissions'},
 ];
 
+// real Devin advertises commands with cognition.ai/category meta + input
+// hints; `help` collides with the local /help (reserved → filtered out)
+const AVAILABLE_COMMANDS = [
+	{name: 'plan', description: 'create an execution plan', input: {hint: '[prompt]'}, _meta: {'cognition.ai/category': 'Session'}},
+	{name: 'ask', description: 'ask a question without editing', _meta: {'cognition.ai/category': 'Session'}},
+	{name: 'compact', description: 'compact the conversation context', _meta: {'cognition.ai/category': 'Session'}},
+	{name: 'help', description: 'Show available commands', _meta: {'cognition.ai/category': 'System'}},
+	{name: 'bug', description: 'report an issue with Devin', _meta: {'cognition.ai/category': 'System'}},
+	{name: 'workspace', description: 'show workspace info', _meta: {'cognition.ai/category': 'Account'}},
+	{name: 'remotion-best-practices', description: 'Remotion video best practices', _meta: {'cognition.ai/category': 'Skills'}},
+	{name: 'recap', description: 'summarize this session'},
+];
+
 // ---- session config options (standard ACP schema) -------------------------
 
 let currentModel = 'swe-2';
@@ -217,11 +230,7 @@ async function runMainTurn(): Promise<'end_turn' | 'cancelled'> {
 		{content: 'Apply the requested edit', status: 'pending', priority: 'high'},
 		{content: 'Run the test suite', status: 'pending', priority: 'medium'},
 	]})))) return 'cancelled';
-	if (!(await step(() => update({sessionUpdate: 'available_commands_update', availableCommands: [
-		{name: 'plan', description: 'create an execution plan'},
-		{name: 'ask', description: 'ask a question without editing'},
-		{name: 'compact', description: 'compact the conversation context'},
-	]})))) return 'cancelled';
+	if (!(await step(() => update({sessionUpdate: 'available_commands_update', availableCommands: AVAILABLE_COMMANDS})))) return 'cancelled';
 	if (!(await step(() => update({sessionUpdate: 'session_info_update', title: 'Workspace Overview'})))) return 'cancelled';
 	if (!(await step(() => extLog('mcp server "devin" connected')))) return 'cancelled';
 	if (!(await step(() => update({sessionUpdate: 'agent_message_chunk', content: text(" I'll take a look at the workspace layout.\n")}), 400))) return 'cancelled';
@@ -366,11 +375,7 @@ const agent: Agent = {
 			() =>
 				void update({
 					sessionUpdate: 'available_commands_update',
-					availableCommands: [
-						{name: 'plan', description: 'create an execution plan'},
-						{name: 'ask', description: 'ask a question without editing'},
-						{name: 'compact', description: 'compact the conversation context'},
-					],
+					availableCommands: AVAILABLE_COMMANDS,
 				}),
 			120,
 		);

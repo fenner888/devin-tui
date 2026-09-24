@@ -283,6 +283,6 @@ export const TIPS: Tip[] = [
 	{key: '/', text: 'shows slash commands'},
 	{key: 'shift+tab', text: 'cycles agent modes'},
 	{key: 'esc', text: 'cancels the running turn'},
-	{key: 'pgup', text: 'scrolls the transcript'},
+	{key: '/help', text: 'lists every command and key'},
 	{key: 'ctrl+b', text: 'toggles the plan block'},
 ];

@@ -21,7 +21,10 @@ import {
 	agentCommands,
 	commandPanelBlock,
 	dimScreen,
+	filterHelp,
 	filterPanelItems,
+	helpBlock,
+	helpEntries,
 	panelItems,
 	spliceCentered,
 	type HandoffInfo,
@@ -58,15 +61,31 @@ function isAuthError(e: unknown): boolean {
 }
 
 const LOCAL_COMMANDS: SlashCommand[] = [
-	{name: 'quit', description: 'exit devin-tui', local: true},
-	{name: 'clear', description: 'start a fresh session', local: true},
-	{name: 'sidebar', description: 'toggle the plan block', local: true},
 	{name: 'model', description: 'switch model and effort', local: true},
+	{name: 'fusion', description: 'choose a Fusion lead + sidekick', local: true},
+	{name: 'handoff', description: 'hand off to a cloud Devin', local: true},
 	{name: 'login', description: 'sign in to the agent', local: true},
 	{name: 'logout', description: 'sign out of the agent', local: true},
 	{name: 'status', description: 'show session status', local: true},
-	{name: 'handoff', description: 'hand off to a cloud Devin', local: true},
-	{name: 'fusion', description: 'choose a Fusion lead + sidekick', local: true},
+	{name: 'clear', description: 'start a fresh session', local: true},
+	{name: 'sidebar', description: 'toggle the plan block', local: true},
+	{name: 'help', description: 'show commands and keys', local: true},
+	{name: 'quit', description: 'exit devin-tui', local: true},
+];
+
+/** The /help Keys section — keep in sync with the useInput handling below. */
+export const HELP_KEYS: readonly {key: string; desc: string}[] = [
+	{key: 'enter', desc: 'send (queues while Devin works)'},
+	{key: 'esc esc', desc: 'interrupt the running turn'},
+	{key: 'ctrl+p', desc: 'command panel'},
+	{key: 'ctrl+o', desc: 'expand/collapse command output'},
+	{key: 'ctrl+b', desc: 'toggle plan'},
+	{key: 'shift+tab', desc: 'cycle mode'},
+	{key: 'pgup/pgdn', desc: 'scroll transcript'},
+	{key: 'shift+↑/↓', desc: 'scroll one line'},
+	{key: '↑/↓', desc: 'prompt history'},
+	{key: '/', desc: 'slash commands'},
+	{key: 'ctrl+c ctrl+c', desc: 'quit'},
 ];
 
 /** `/abc` (no space yet) → 'abc' filter for the slash dropdown. */
@@ -96,6 +115,9 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 	const [panelOpen, setPanelOpen] = useState(false);
 	const [panelQuery, setPanelQuery] = useState('');
 	const [panelSel, setPanelSel] = useState(0);
+	const [helpOpen, setHelpOpen] = useState(false);
+	const [helpQuery, setHelpQuery] = useState('');
+	const [helpSel, setHelpSel] = useState(0);
 	const [authSel, setAuthSel] = useState(0);
 	const [picker, setPicker] = useState<PickerView | null>(null);
 	const [fusion, setFusion] = useState<FusionView | null>(null);
@@ -596,6 +618,12 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 				setPaletteSel(0);
 				return;
 			}
+			if (t === '/help') {
+				openHelp();
+				setPrompt({value: '', cursor: 0});
+				setPaletteSel(0);
+				return;
+			}
 			// ACP doesn't allow concurrent prompts — queue guidance typed
 			// while the agent works; it's sent when the turn ends.
 			if (working) {
@@ -647,6 +675,12 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 		setPanelOpen(true);
 	}, []);
 
+	const openHelp = useCallback(() => {
+		setHelpQuery('');
+		setHelpSel(0);
+		setHelpOpen(true);
+	}, []);
+
 	const runPanelItem = useCallback(
 		(item: PanelItem | undefined) => {
 			if (!item) return;
@@ -682,6 +716,9 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 				case 'status':
 					doStatus();
 					break;
+				case 'help':
+					openHelp();
+					break;
 				case 'insert':
 					setPrompt({
 						value: item.action.text,
@@ -693,7 +730,7 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 					break;
 			}
 		},
-		[submit, cycleMode, openPicker, openFusion, doLogin, doLogout, doStatus, onQuit],
+		[submit, cycleMode, openPicker, openFusion, doLogin, doLogout, doStatus, openHelp, onQuit],
 	);
 
 	// ---- input ----------------------------------------------------------------
@@ -852,6 +889,36 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 			} else if (input && !key.ctrl && !key.meta) {
 				setPanelQuery(q => q + input);
 				setPanelSel(0);
+			}
+			return;
+		}
+
+		// help overlay captures input while open
+		if (helpOpen) {
+			const rows = filterHelp(
+				helpEntries(s, LOCAL_COMMANDS, HELP_KEYS),
+				helpQuery,
+			);
+			const flat = rows.flatMap(r => ('entry' in r ? [r.entry] : []));
+			const n = Math.max(1, flat.length);
+			if (key.escape) {
+				setHelpOpen(false);
+			} else if (key.upArrow) {
+				setHelpSel(i => (i - 1 + n) % n);
+			} else if (key.downArrow) {
+				setHelpSel(i => (i + 1) % n);
+			} else if (key.return) {
+				const it = flat[Math.min(helpSel, flat.length - 1)];
+				if (it?.insert) {
+					setHelpOpen(false);
+					setPrompt({value: it.insert, cursor: it.insert.length});
+				}
+			} else if (key.backspace || key.delete) {
+				setHelpQuery(q => q.slice(0, -1));
+				setHelpSel(0);
+			} else if (input && !key.ctrl && !key.meta) {
+				setHelpQuery(q => q + input);
+				setHelpSel(0);
 			}
 			return;
 		}
@@ -1071,7 +1138,18 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 				panelQuery,
 				Math.min(64, Math.max(24, cols - 8)),
 			)
-		: null;
+		: helpOpen
+			? helpBlock(
+					filterHelp(
+						helpEntries(state, LOCAL_COMMANDS, HELP_KEYS),
+						helpQuery,
+					),
+					helpSel,
+					helpQuery,
+					Math.min(64, Math.max(24, cols - 8)),
+					rows - 4,
+				)
+			: null;
 	if (overlay) lines = spliceCentered(dimScreen(lines), overlay, cols, rows);
 
 	return (

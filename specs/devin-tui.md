@@ -359,8 +359,8 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   home in `needsAuth`; a method-not-found error shows a system line),
   `/status` (system line `signed in|signed out · <agentTitle> · session
   <short id|—> · log <path>`), `/handoff [task]` (see below), `/fusion`
-  (see below). Agent-advertised commands named `login`,
-  `logout`, `status`, `model`, `handoff` or `fusion` are filtered out of
+  (see below), `/help` (see Overlays → Help). Agent-advertised commands named `login`,
+  `logout`, `status`, `model`, `handoff`, `fusion` or `help` are filtered out of
   the Agent section and slash dropdown so local commands always win.
 
 ## /handoff — hand off to a cloud Devin
@@ -416,12 +416,26 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
   Devin → `/handoff`, Switch to Fusion → `/fusion`, Switch model →
   `/model`), **Agent** (every advertised
   ACP command minus the locally-handled names), **Account** (Sign in, Sign
-  out, Status), **App** (Quit). Items are
+  out, Status), **App** (Help → `/help`, Quit). Items are
   two-column: name bright padded to the widest name + 2, description muted;
   right-aligned shortcut hints muted (ctrl+b, shift+tab, ctrl+c) with 2-col
   right padding. Selected row = selection colors across the full inner
   width. Enter runs; agent commands insert `/name ` into the prompt (no
   auto-send).
+- **Help** (`/help` or the command panel's **Help** item): the same
+  centered `overlay` chrome (title `Help` + `esc`, `Search` row filtering
+  all rows by substring, selection bar), scrollable with `↑/↓ n more`
+  markers when taller than `rows-4`. Sections (muted headers): **TUI
+  commands** — every `LOCAL_COMMANDS` entry `/name` + description;
+  **Keys** — the exported `HELP_KEYS` list (one constant next to the key
+  handling); **Devin commands** — advertised agent commands grouped by
+  `_meta["cognition.ai/category"]` in first-appearance order as faint
+  sub-headers (`Other` when uncategorized), each `/name` + description
+  with `input.hint` appended faint (e.g. `/plan [prompt]`); before a
+  session exists the section shows `connect to see Devin's commands`.
+  ↑↓ move (headers are skipped), typing filters, Backspace edits, Enter
+  on a command row closes and inserts `/name ` into the prompt (key rows
+  do nothing), Esc closes.
 - **Slash dropdown**: typing `/` at the start of input opens a two-column
   dropdown directly above the input panel (`/name` bright padded,
   description muted), `overlay` bg, selected row full-width selection
@@ -429,7 +443,7 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
 - **Permission**: there is no permission overlay — requests render inline
   in the transcript under their tool call (see Session screen → Inline
   permission). The dimmed-backdrop overlay style is used only by the
-  command panel.
+  command panel and /help.
 
 ## Keys
 
@@ -477,7 +491,8 @@ state to `needsAuth`.
   low/medium/high/max — a shorter list for `opus-5`),
   `session/set_config_option` (stderr log + `config_option_update`
   push), `logout`, `_cognition.ai/output` notifications, slash commands
-  advertised at `session/new`, ~2.5s TTFT before the first streamed
+  advertised at `session/new` (with `cognition.ai/category` meta + one
+  `input.hint`, incl. a `help` command the reserved-name filter drops), ~2.5s TTFT before the first streamed
   update, a realistic weather-task first turn mirroring real Devin
   payload shapes (thought → plan → execute `Listed ./src` with a
   `tool://preview` shell-command resource, output via `in_progress` text
@@ -501,7 +516,8 @@ state to `needsAuth`.
   /handoff confirm block, a real POST against `$DEVIN_API_URL` (point it
   at a local recorder — never the real API in tests), and the missing-key
   path; `fusion` opens the Fusion picker, cycles the sidekick and applies
-  a pair; `real`/`real80` cover the real-Devin payload turn (collapsed
+  a pair; `help`/`help80` cover the /help overlay (sections, filter,
+  Enter-inserts-command, scroll markers); `real`/`real80` cover the real-Devin payload turn (collapsed
   lines, expanded blocks, six-option permission, long-diff clamping);
   `fallback` ends on the picker without truecolor.
 - `scripts/snapshot.ts` — ANSI → screen emulator; `--after <marker>` dumps

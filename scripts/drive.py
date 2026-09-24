@@ -222,6 +222,28 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # /help overlay: open (help.png) -> filter 'mod' (help-filter.png) -> esc
+    "help": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"/help"),
+        (0.3, b"\r"),             # overlay open
+        (2.5, b"mod"),            # filter rows by 'mod'
+        (1.5, b"\r"),             # Enter -> inserts '/model ' into prompt
+        (1.5, ESC),               # clear the prompt
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # 80x24: the overlay scrolls with up/down markers (help-80x24.png)
+    "help80": [
+        (6.0, b"\r"),
+        (2.5, b"/help"),
+        (0.3, b"\r"),
+        (2.5, ESC),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # /fusion picker: open -> cycle sidekick -> apply
     "fusion": [
         (6.0, b"\r"),             # needsAuth -> auth -> ready

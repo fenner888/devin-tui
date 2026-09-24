@@ -55,6 +55,10 @@ export interface SlashCommand {
 	name: string;
 	description: string;
 	local?: boolean;
+	/** input.hint — e.g. `[prompt]`, shown after the name in /help */
+	hint?: string;
+	/** _meta["cognition.ai/category"] — Devin's command grouping */
+	category?: string;
 }
 
 export interface PermissionReq {
@@ -265,10 +269,16 @@ function applyUpdate(state: State, update: SessionUpdate): State {
 		case 'available_commands_update': {
 			return {
 				...state,
-				commands: update.availableCommands.map(c => ({
-					name: c.name,
-					description: c.description ?? '',
-				})),
+				commands: update.availableCommands.map(c => {
+					const cat = c._meta?.['cognition.ai/category'];
+					return {
+						name: c.name,
+						description: c.description ?? '',
+						hint: c.input?.hint ?? undefined,
+						category:
+							typeof cat === 'string' ? cat : undefined,
+					};
+				}),
 			};
 		}
 		case 'current_mode_update': {

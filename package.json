@@ -1,0 +1,29 @@
+{
+  "name": "devin-tui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "devin-tui": "./bin/devin-tui.sh"
+  },
+  "scripts": {
+    "start": "tsx src/index.tsx",
+    "typecheck": "tsc --noEmit",
+    "fake-agent": "tsx test/fake-agent.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "1.4.0",
+    "ink": "7.1.1",
+    "react": "19.2.8",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.1",
+    "@types/react": "19.2.18",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2"
+  }
+}

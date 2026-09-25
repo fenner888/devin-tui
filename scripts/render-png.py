@@ -39,6 +39,10 @@ BRAILLE_FONTS = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/TTF/DejaVuSans.ttf",
     "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+    "/usr/share/fonts/noto/NotoSansSymbols2-Regular.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSerif.ttf",
+    "/usr/share/fonts/gnu-free/FreeSerif.otf",
 ]
 SYMBOL_FONTS = [
     "/System/Library/Fonts/Apple Symbols.ttf",   # ∴ ◐ ○ ● ✎ etc.
@@ -143,6 +147,12 @@ def main():
             except Exception:
                 pass
     print(f"font: {font_path} | fallbacks: {list(fb)}", file=sys.stderr)
+    if not any(p in fb for p in BRAILLE_FONTS) and not has_glyph(font, "\u28ff"):
+        print(
+            "warning: no braille-capable font found; braille glyphs will render "
+            "as boxes (install fonts-dejavu-core or fonts-noto)",
+            file=sys.stderr,
+        )
 
     glyph_cache = {}
 

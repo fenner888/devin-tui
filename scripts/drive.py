@@ -183,6 +183,22 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # HOME-screen system lines: /status then /handoff add a README —
+    # env-driven: no DEVIN_API_KEY -> PAT line; DEVIN_API_KEY=cog_* and
+    # no DEVIN_ORG_ID -> the ORG_ID line. Any item switches home ->
+    # session view (handoff-home.png)
+    "homehandoff": [
+        (6.0, b"\r"),
+        (2.0, b""),               # home frame (no items)
+        (0.6, b"/status"),
+        (0.3, b"\r"),             # system line -> session view
+        (1.5, b"/handoff add a README"),
+        (0.3, b"\r"),             # env-dependent system line
+        (2.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # real-Devin payload shapes: permission (real-permission.png) ->
     # collapsed done lines (real-collapsed.png) -> ctrl+o expanded
     # (real-expanded.png)

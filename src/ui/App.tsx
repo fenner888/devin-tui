@@ -417,17 +417,23 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	/** /handoff — gather git context + transcript digest, then show the
 	 *  inline confirm block (Enter sends, Esc cancels). */
 	const prepareHandoff = useCallback(async (task: string) => {
-		const s = stateRef.current;
-		const gc = await gatherGitContext(s.cwd);
-		const context = transcriptDigest(s);
-		setHandoff({
-			task,
-			repo: gc.repo,
-			branch: gc.branch,
-			diffKb: gc.diff ? Math.ceil(Buffer.byteLength(gc.diff) / 1024) : 0,
-			contextKb: context ? Math.ceil(Buffer.byteLength(context) / 1024) : 0,
-			prompt: buildHandoffPrompt(task, {...gc, context}),
-		});
+		try {
+			const s = stateRef.current;
+			const gc = await gatherGitContext(s.cwd);
+			const context = transcriptDigest(s);
+			setHandoff({
+				task,
+				repo: gc.repo,
+				branch: gc.branch,
+				diffKb: gc.diff ? Math.ceil(Buffer.byteLength(gc.diff) / 1024) : 0,
+				contextKb: context
+					? Math.ceil(Buffer.byteLength(context) / 1024)
+					: 0,
+				prompt: buildHandoffPrompt(task, {...gc, context}),
+			});
+		} catch (e) {
+			dispatch({type: 'systemMsg', text: `handoff failed: ${errMsg(e)}`});
+		}
 	}, []);
 
 	/** /handoff confirm → POST to the Devin API (key only in the header). */
@@ -788,10 +794,18 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			if (t === '/handoff' || t.startsWith('/handoff ')) {
 				setPrompt({value: '', cursor: 0});
 				setPaletteSel(0);
-				if (!process.env.DEVIN_API_KEY) {
+				const handoffKey = process.env.DEVIN_API_KEY;
+				if (!handoffKey) {
 					dispatch({
 						type: 'systemMsg',
-						text: 'set DEVIN_API_KEY to use /handoff — create one at app.devin.ai/settings/api-keys',
+						text: 'set DEVIN_API_KEY to use /handoff — create a PAT at app.devin.ai → Settings → Devin API → PATs',
+					});
+					return;
+				}
+				if (handoffKey.startsWith('cog_') && !process.env.DEVIN_ORG_ID) {
+					dispatch({
+						type: 'systemMsg',
+						text: 'set DEVIN_ORG_ID too — cog_ keys (PATs / service users) need your organization id',
 					});
 					return;
 				}
@@ -1487,7 +1501,8 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 
 	// ---- render ----------------------------------------------------------------
 
-	const home = state.turns === 0 && !state.loading;
+	const home =
+		state.turns === 0 && !state.loading && state.items.length === 0;
 	const filter = slashFilter(prompt.value);
 	const allCommands: SlashCommand[] = [
 		...agentCommands(state),

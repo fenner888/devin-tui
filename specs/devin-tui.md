@@ -114,7 +114,11 @@ faint `q to quit` — `q` and ctrl+c both quit (the browser flow may never
 complete). In `needsAuth` typing is ignored except menu keys; ctrl+c×2
 still quits. No API-key path.
 
-## Home screen (shown until the first prompt is sent)
+## Home screen (shown until the first prompt is sent or any transcript item appears)
+
+The home screen shows only while `turns === 0` AND `items` is empty —
+any transcript item (e.g. a `/status`, `/handoff` or error system
+line) switches to the session view so the line is never invisible.
 
 A vertically + horizontally centered column:
 
@@ -476,11 +480,16 @@ Devin's ACP server does not expose `handoff`, so it is implemented
 locally, mirroring the open-source `devin-handoff.sh` `create` exactly
 (`src/handoff.ts`):
 
-- Requires `DEVIN_API_KEY` (personal `apk_*` or service `cog_*`) — missing
-  → system line `set DEVIN_API_KEY to use /handoff — create one at
-  app.devin.ai/settings/api-keys`. The key is only ever sent in the
-  `Authorization: Bearer` header — never logged, echoed, or written to
-  disk; request bodies are never logged.
+- Requires `DEVIN_API_KEY` — a PAT (`cog_*`, v3 API, also needs
+  `DEVIN_ORG_ID`) is the recommended type; personal `apk_*` (v1) also
+  works. Missing key → system line `set DEVIN_API_KEY to use /handoff —
+  create a PAT at app.devin.ai → Settings → Devin API → PATs`; a `cog_*`
+  key without `DEVIN_ORG_ID` → `set DEVIN_ORG_ID too — cog_ keys (PATs /
+  service users) need your organization id`. Both checks run before any
+  git/context work (handoff.ts keeps its own check as defence in depth).
+  The key is only ever sent in the `Authorization: Bearer` header —
+  never logged, echoed, or written to disk; request bodies are never
+  logged.
 - API base: `DEVIN_API_URL` env, default `https://api.devin.ai`. Personal
   keys → `{base}/v1`; service keys (`cog_*`) → `{base}/v3/organizations/
   {DEVIN_ORG_ID}` (required). Endpoint: `POST {base}/sessions`,
@@ -505,7 +514,9 @@ locally, mirroring the open-source `devin-handoff.sh` `create` exactly
   Blocked while `working` (existing notice).
 - Success → system line `· ◆ handed off → <url>` (url bright); failure →
   `handoff failed: <HTTP status + server detail | network error>` (the
-  key never appears in messages).
+  key never appears in messages). The same line covers prepare errors
+  (git/context gather) — a failed `prepareHandoff` is caught and
+  reported, never an unhandled rejection.
 
 ## Overlays
 

@@ -760,7 +760,9 @@ state to `needsAuth`.
   (frame ends at `\x1b[?2026l`, Ink's synchronized-update boundary);
   `--json` emits per-cell `{ch, fg, bg, bold, dim, italic, inverse}`.
 - `scripts/render-png.py` — paints a `--json` frame to PNG with Pillow
-  (Menlo for text; Apple Braille for U+2800–28FF). PNG screenshots are the
+  (Menlo for text, else DejaVu Sans Mono / Liberation Mono on Linux; Apple
+  Braille or DejaVu Sans for U+2800–28FF; the blank braille cell U+2800 is
+  painted as empty, never as a fallback glyph). PNG screenshots are the
   real visual verification — text snapshots can't show gray shades.
 - `scripts/check-real-devin.ts` — real `devin acp` initialize + session/new
   rejection + ext-notification resilience; never calls `authenticate`.

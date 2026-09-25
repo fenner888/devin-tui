@@ -12,7 +12,7 @@ import type {SlashCommand, State} from '../state/store.js';
 /** Force every foreground to `faint` — the dimmed backdrop under an overlay. */
 export function dimScreen(lines: Seg[][]): Seg[][] {
 	return lines.map(row =>
-		row.map(s => ({...s, k: 'faint' as const})),
+		row.map(s => ({...s, k: 'faint' as const, hex: undefined})),
 	);
 }
 

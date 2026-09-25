@@ -24,6 +24,7 @@ import {
 import {Line, useTick} from './Line.js';
 import {homeLines} from './home.js';
 import {contentWidth, sessionLines} from './session.js';
+import {loadCatalog, type CatalogState} from '../catalog.js';
 import {
 	asImage,
 	buildBlocks,
@@ -154,6 +155,18 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	const [resumeView, setResumeView] = useState<ResumeView | null>(null);
 	// pending /handoff confirmation — prompt prebuilt, shown above composer
 	const [handoff, setHandoff] = useState<(HandoffInfo & {prompt: string}) | null>(null);
+	// model pricing catalog for the /model + /fusion pickers — loaded
+	// once, non-blocking (CLI → ~/.cache → unavailable)
+	const [catalog, setCatalog] = useState<CatalogState>({status: 'loading'});
+	useEffect(() => {
+		let live = true;
+		void loadCatalog().then(cs => {
+			if (live) setCatalog(cs);
+		});
+		return () => {
+			live = false;
+		};
+	}, []);
 	// image attachment chips (▣) + the @file dropdown
 	const [atts, setAtts] = useState<ImageAttachment[]>([]);
 	const [files, setFiles] = useState<string[] | null>(null);
@@ -1517,6 +1530,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 					mentionOpen,
 					mentionSel: mentionSelC,
 					chips,
+					catalog,
 					handoff: handoff ?? undefined,
 				},
 				cols,
@@ -1536,6 +1550,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 					mentionOpen,
 					mentionSel: mentionSelC,
 					chips,
+					catalog,
 					modelPicker: picker ?? undefined,
 					fusion: fusion ?? undefined,
 					resume: resumeView ?? undefined,

@@ -33,7 +33,7 @@ export interface ConnEvents {
 }
 
 /** Use `bin` if it's on PATH; otherwise fall back to ~/.local/bin/<bin> (the Devin CLI install location). */
-function resolveBin(bin: string): string {
+export function resolveBin(bin: string): string {
 	if (bin.includes('/')) return bin;
 	const onPath = (process.env.PATH ?? '')
 		.split(path.delimiter)

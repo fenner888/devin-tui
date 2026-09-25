@@ -373,6 +373,40 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # catalog pricing: /model + filter 'op' -> priced row (pricing-picker.png)
+    # -> filter 'swe' -> FREE row (pricing-free.png) -> /fusion pair
+    # pricing (pricing-fusion.png). Needs DEVIN_TUI_MODELS_FILE=fixture.
+    "pricing": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"/model"),
+        (0.3, b"\r"),             # picker open
+        (0.8, b"op"),             # filter -> Claude Opus 5 (priced, High)
+        (2.5, b""),
+        (0.3, b"\x7f"),           # clear filter
+        (0.15, b"\x7f"),
+        (0.5, b"swe"),            # -> SWE-2 (Free)
+        (2.5, b""),
+        (0.4, ESC),               # close picker
+        (0.6, b"/fusion"),
+        (0.3, b"\r"),             # fusion picker -> pair pricing
+        (2.5, b""),
+        (0.5, ESC),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # pricing at 80x24 — detail rows shed to fit (pricing-80.png)
+    "pricing80": [
+        (6.0, b"\r"),
+        (2.5, b"/model"),
+        (0.3, b"\r"),
+        (0.8, b"op"),
+        (2.5, b""),
+        (0.5, ESC),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # no-truecolor run ending on the model picker (inverse + ANSI fallback)
     "fallback": [
         (6.0, b"\r"),             # needsAuth menu -> auth

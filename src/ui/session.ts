@@ -27,6 +27,7 @@ import {
 	findConfigOption,
 	type State,
 } from '../state/store.js';
+import type {CatalogState} from '../catalog.js';
 
 export interface SessionUI {
 	value: string;
@@ -45,6 +46,7 @@ export interface SessionUI {
 	resume?: ResumeView; // /resume picker state, above the input panel
 	permSel: number; // selected option in the inline permission prompt
 	handoff?: HandoffInfo; // /handoff confirmation, above the input panel
+	catalog: CatalogState; // model pricing catalog (pickers)
 }
 
 export function contentWidth(cols: number): number {
@@ -73,6 +75,24 @@ export function sessionLines(
 			: [];
 	const marker =
 		ui.scrollOffset > 0 ? [moreMarker(ui.scrollOffset, w)] : [];
+	const input = inputPanel(w, ui.value, ui.cursor, ui.tick, {
+		ready: !!s.sessionId,
+		mode: displayMode(s),
+		modeId: s.mode,
+		model: displayModel(s),
+		cwd: shortCwd(s.cwd),
+		working: s.status === 'working',
+	}, ui.chips);
+	// picker blocks budget what's left after the composer, the status bar
+	// and its blank rows, the transcript/blank gap and any other aux rows —
+	// the picker sheds its detail rows to fit at small heights
+	const otherAux =
+		plan.length +
+		(plan.length > 0 ? 1 : 0) +
+		marker.length +
+		dropdown.length +
+		(ui.handoff ? handoffBlock(ui.handoff, w).length : 0);
+	const pkMax = Math.max(6, rows - input.length - 6 - otherAux);
 	const modelOpt =
 		ui.modelPicker || ui.fusion ? findConfigOption(s, 'model') : undefined;
 	const modelPk =
@@ -82,6 +102,8 @@ export function sessionLines(
 					findConfigOption(s, 'thought_level'),
 					ui.modelPicker,
 					w,
+					ui.catalog,
+					pkMax,
 				)
 			: [];
 	const fusionRows =
@@ -91,6 +113,8 @@ export function sessionLines(
 					modelOpt.currentValue,
 					ui.fusion,
 					w,
+					ui.catalog,
+					pkMax,
 				)
 			: [];
 	const resumeRows = ui.resume
@@ -107,14 +131,6 @@ export function sessionLines(
 		...dropdown,
 		...handoffRows,
 	];
-	const input = inputPanel(w, ui.value, ui.cursor, ui.tick, {
-		ready: !!s.sessionId,
-		mode: displayMode(s),
-		modeId: s.mode,
-		model: displayModel(s),
-		cwd: shortCwd(s.cwd),
-		working: s.status === 'working',
-	}, ui.chips);
 
 	const transH = Math.max(
 		1,

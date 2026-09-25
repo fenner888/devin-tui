@@ -61,8 +61,10 @@ export type Token =
 	| 'pkBold' // #4db8ff + bold — selected inline-permission row
 	| 'pkDim' // blue, dim — ← → arrows
 	| 'pkOff' // #3a3a3a — unfilled bars
-	| 'pkGreen' // #3ddc84 — reserved: "New" badge
-	| 'pkYellow' // #e6d17a — reserved: "Beta" badge
+	| 'pkGreen' // #3ddc84 — "New" badge + price-slider low end
+	| 'pkYellow' // #e6d17a — "Beta" badge + price-slider mid-low
+	| 'pkOrange' // #e5a07a — price-slider mid-high
+	| 'pkPurple' // #b48ead — price-slider high end
 	| 'pkBadge' // reserved: FREE badge (#0a0a0a on #4db8ff)
 	// composer frame bezel + working shimmer
 	| 'bezelHi' // #6a6a6a — top/left edge + ╭
@@ -109,6 +111,8 @@ const COLOR: Record<Token, StyleDef> = {
 	pkOff: {fg: '#3a3a3a'},
 	pkGreen: {fg: '#3ddc84'},
 	pkYellow: {fg: '#e6d17a'},
+	pkOrange: {fg: '#e5a07a'},
+	pkPurple: {fg: '#b48ead'},
 	pkBadge: {fg: '#0a0a0a', bg: 'pkBlue'},
 	bezelHi: {fg: '#6a6a6a'},
 	bezelMid: {fg: '#4a4a4a'},
@@ -144,6 +148,8 @@ const MONO: Record<Token, StyleDef> = {
 	pkOff: {dim: true},
 	pkGreen: {ansi: 'green'},
 	pkYellow: {ansi: 'yellow'},
+	pkOrange: {ansi: 'red'},
+	pkPurple: {ansi: 'magenta'},
 	pkBadge: {ansi: 'black', ansiBg: 'blueBright'},
 	bezelHi: {dim: true},
 	bezelMid: {dim: true},
@@ -153,10 +159,12 @@ const MONO: Record<Token, StyleDef> = {
 	shine3: {},
 };
 
-/** Ink <Text> props for a token + optional region background override. */
+/** Ink <Text> props for a token + optional region background override;
+ *  `hex` replaces the fg under truecolor only (gradient cells). */
 export function segStyle(
 	t: Token | undefined,
 	bg?: Bg,
+	hex?: string,
 ): {
 	color?: string;
 	backgroundColor?: string;
@@ -176,6 +184,7 @@ export function segStyle(
 	} = {};
 	if (TRUECOLOR) {
 		if (d.fg) out.color = d.fg;
+		if (hex) out.color = hex;
 		const b = bg ?? d.bg;
 		if (b) out.backgroundColor = BG_HEX[b];
 	} else {

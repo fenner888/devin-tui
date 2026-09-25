@@ -9,6 +9,9 @@ export interface Seg {
 	t: string;
 	k?: Token;
 	bg?: Bg;
+	/** truecolor fg override (gradient cells — the price slider); `k` stays
+	 *  the ANSI fallback and the overlay-dim target */
+	hex?: string;
 }
 
 export const seg = (t: string, k?: Token, bg?: Bg): Seg => ({t, k, bg});

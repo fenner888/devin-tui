@@ -9,7 +9,7 @@ export function Line({segs}: {segs: Seg[]}): React.JSX.Element {
 	return (
 		<Text wrap="truncate">
 			{segs.map((s, i) => (
-				<Text key={i} {...segStyle(s.k, s.bg ?? 'bg')}>
+				<Text key={i} {...segStyle(s.k, s.bg ?? 'bg', s.hex)}>
 					{s.t}
 				</Text>
 			))}

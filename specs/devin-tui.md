@@ -54,7 +54,8 @@ are defined. Grayscale palette:
   `diffAdd` #12261a / `diffDel` #2a1414, `cmdFlag` #6cb6ff and `cmdString`
   #e5a07a for `$ command` highlighting, `pkYellow` for the `bypass
   permissions on` composer tag. Fallback: ANSI green/red/blue/yellow, no
-  diff background. Hue is allowed ONLY for: the picker, success/fail dots,
+  diff background. Hue is allowed ONLY for: the picker (incl. the pricing
+  slider's green→yellow→orange→purple gradient), success/fail dots,
   diff +/- lines, command highlighting, and the bypass tag.
 
 ## Logo
@@ -200,6 +201,36 @@ as the slash dropdown, not a centered overlay):
   then for `thought_level` if changed; errors surface as a system line.
   Esc closes without changes. Opening while `working` is blocked by the
   existing `agent is working` notice.
+
+### Catalog pricing + badges (`src/catalog.ts`)
+
+- The catalog loads once at startup (non-blocking): `DEVIN_TUI_MODELS_FILE`
+  (test override, read directly) → `devin models list --format json`
+  (execFile, no shell, 20s timeout; a successful payload is written to the
+  persistent cache `~/.cache/devin-tui/models.json`) → that cache →
+  unavailable. Indexed by `model_uid` → label, `costTier`, parsed
+  `prices` (input/cached/output, tolerant `$<n> / 1M <label>` regex),
+  `isNew`, `isBeta`, `maxContext`. When unavailable the picker renders
+  exactly as before plus one faint footer line `prices unavailable — log
+  in the Devin CLI (devin auth login) to load them`.
+- Badge column after the name: `✱` `pkGreen` for `is_new`, `✱` `pkYellow`
+  for `is_beta` (New wins if both), blank otherwise.
+- Below the list, for the selected row's catalog entry: blank row,
+  price slider (~30 `━` cells RGB-interpolated green `#3ddc84` → yellow
+  `#e6d17a` → orange `#e5a07a` → purple `#b48ead`, bright `●` knob at the
+  model's log-scale OUTPUT-price position between the min and max among
+  priced options; ANSI-segment fallback), then muted `Input / Cached
+  input / Output` labels over bright `$<n> / 1M` values, blank row, then
+  a `✱ New  ✱ Beta` legend listing only the badges present in the list.
+- `cost_tier: "Free"` (no `cost_summary`) renders a `pkBadge` `FREE` badge
+  + ` no quota consumed` instead of slider+prices. A model missing from
+  the catalog omits the pricing rows (legend stays). The `/fusion`
+  picker shows the same block for the selected lead+sidekick pair
+  (`fusion-…` uids are in the catalog).
+- Height pressure (`maxRows` = the picker's screen-fit budget) sheds in
+  order: legend → slider → pad rows → all detail rows → then the list
+  window itself shrinks (min 3 visible rows) so the picker always fits
+  with the composer intact.
 
 ## Composer / input
 
@@ -617,7 +648,9 @@ state to `needsAuth`.
   newlines; `mention` covers the `@` dropdown; `attachments` covers the
   ⌗/▣ chips and the `text,resource_link,image` prompt; `realedit` (with
   `DRIVE_AGENT=real DRIVE_CWD=<scratch repo>`) is the real-Devin edit
-  test; `fallback` ends on the picker without truecolor.
+  test; `pricing`/`pricing80` cover the catalog pricing block (priced,
+  FREE, fusion pair, 80x24 shedding — needs `DEVIN_TUI_MODELS_FILE`);
+  `fallback` ends on the picker without truecolor.
 - `scripts/snapshot.ts` — ANSI → screen emulator; `--after <marker>` dumps
   the first complete frame containing the marker, `--after-last` the last,
   `--before` the last complete frame before the marker's sync block

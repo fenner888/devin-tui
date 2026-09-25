@@ -34,6 +34,7 @@ import {
 	findConfigOption,
 	type State,
 } from '../state/store.js';
+import type {CatalogState} from '../catalog.js';
 
 export interface HomeUI {
 	value: string;
@@ -51,6 +52,7 @@ export interface HomeUI {
 	mentionSel: number;
 	chips: {icon: string; label: string}[];
 	handoff?: HandoffInfo; // /handoff confirmation, above the composer
+	catalog: CatalogState; // model pricing catalog (pickers)
 }
 
 /** The needsAuth sign-in menu — replaces the input panel on the home screen. */
@@ -139,6 +141,17 @@ export function homeLines(
 	const w = Math.min(78, cols - 8);
 	const x = Math.max(0, Math.floor((cols - w) / 2));
 	const logoW = strWidth(LOGO_2X[0] ?? '');
+	const input = inputPanel(w, ui.value, ui.cursor, ui.tick, {
+		ready: !!s.sessionId,
+		mode: displayMode(s),
+		modeId: s.mode,
+		model: displayModel(s),
+		cwd: shortCwd(s.cwd),
+		working: s.status === 'working',
+	}, ui.chips);
+	// the picker sheds detail rows to fit between the logo zone and the
+	// composer (see session.ts for the same budgeting)
+	const pkBudget = Math.max(6, rows - input.length - 10);
 	const pkRows = (() => {
 		if ((!ui.picker && !ui.fusion && !ui.resume) || s.status === 'needsAuth')
 			return [] as Seg[][];
@@ -151,9 +164,18 @@ export function homeLines(
 				mo.currentValue,
 				ui.fusion,
 				w,
+				ui.catalog,
+				pkBudget,
 			);
 		}
-		return pickerLines(mo, findConfigOption(s, 'thought_level'), ui.picker!, w);
+		return pickerLines(
+			mo,
+			findConfigOption(s, 'thought_level'),
+			ui.picker!,
+			w,
+			ui.catalog,
+			pkBudget,
+		);
 	})();
 	const slashRows =
 		ui.slashOpen && s.status !== 'needsAuth'
@@ -249,14 +271,7 @@ export function homeLines(
 					...pkRows.map(row => at(x, row)),
 					...slashRows.map(row => at(x, row)),
 					...handoffRows.map(row => at(x, row)),
-					...inputPanel(w, ui.value, ui.cursor, ui.tick, {
-						ready: !!s.sessionId,
-						mode: displayMode(s),
-						modeId: s.mode,
-						model: displayModel(s),
-						cwd: shortCwd(s.cwd),
-						working: s.status === 'working',
-					}, ui.chips).map(row => at(x, row)),
+					...input.map(row => at(x, row)),
 					at(
 						x,
 						hintsLine(w, [

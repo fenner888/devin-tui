@@ -1,6 +1,8 @@
 import type {SessionConfigOption, SessionInfo} from '@agentclientprotocol/sdk';
 import {configGroups, configValues} from '../state/store.js';
-import {padSegs, seg, strWidth, truncSegs, type Seg} from './lines.js';
+import type {CatalogState, ModelCatalog} from '../catalog.js';
+import type {Token} from '../theme.js';
+import {padSegs, seg, segsWidth, strWidth, truncSegs, type Seg} from './lines.js';
 import {shortCwd} from './panel.js';
 
 /**
@@ -50,6 +52,13 @@ interface ShellSpec {
 	control?: (o: Flat, bg: 'pkSel' | 'overlay') => Seg[];
 	/** right-aligned meta on every row (e.g. resume picker's time + id) */
 	rowMeta?: (o: Flat, bg: 'pkSel' | 'overlay') => Seg[];
+	/** ✱ badge token after the name ('pkGreen' new / 'pkYellow' beta) */
+	badge?: (o: Flat) => Token | null;
+	/** detail rows under the list for the selected option (pricing) */
+	detail?: (o: Flat | undefined) => DetailRow[];
+	/** cap on total block height — legend drops first, then the slider
+	 *  row, then the rest of the detail */
+	maxRows?: number;
 	/** ↑↓ verb in the footer ('select' default, 'lead' for fusion) */
 	selectHint?: string;
 	/** ←→ label in the footer ('reasoning effort' / 'sidekick') */
@@ -57,20 +66,138 @@ interface ShellSpec {
 	w: number;
 }
 
+/** A detail row tagged so height pressure knows what to drop first. */
+interface DetailRow {
+	row: Seg[];
+	kind: 'other' | 'slider' | 'legend' | 'pad';
+}
+
 function pickerShell(spec: ShellSpec): Seg[][] {
 	const {display, w} = spec;
 	const nOpts = display.reduce((n, r) => n + ('opt' in r ? 1 : 0), 0);
 	const sel = Math.min(spec.sel, Math.max(0, nOpts - 1));
 	const selDisp = display.findIndex(r => 'opt' in r && r.idx === sel);
-	const start = Math.min(
-		Math.max(0, selDisp - MAX_ROWS + 1),
-		Math.max(0, display.length - MAX_ROWS),
-	);
-	const window_ = display.slice(start, start + MAX_ROWS);
-	const above = display.slice(0, start).filter(r => 'opt' in r).length;
-	const below = display
-		.slice(start + MAX_ROWS)
-		.filter(r => 'opt' in r).length;
+	const selRow = display.find(r => 'opt' in r && r.idx === sel);
+	let det =
+		spec.detail?.(selRow && 'opt' in selRow ? selRow.opt : undefined) ?? [];
+
+	// the list window over `display` for a given visible-row budget
+	const windowRows = (visN: number): Seg[][] => {
+		const start = Math.min(
+			Math.max(0, selDisp - visN + 1),
+			Math.max(0, display.length - visN),
+		);
+		const window_ = display.slice(start, start + visN);
+		const above = display.slice(0, start).filter(r => 'opt' in r).length;
+		const below = display
+			.slice(start + visN)
+			.filter(r => 'opt' in r).length;
+		const rows: Seg[][] = [];
+		if (above > 0) {
+			rows.push(
+				padSegs(
+					[seg(`   ↑ ${above} more above`, 'faint', 'overlay')],
+					w,
+					'overlay',
+				),
+			);
+		}
+		// badges line up in one column after the longest visible name
+		badgeCol = Math.min(
+			Math.max(20, w - 30),
+			Math.max(0, ...window_.map(r => ('header' in r ? 0 : strWidth(r.opt.name)))),
+		);
+		for (const r of window_) rows.push(optionRow(r));
+		if (below > 0) {
+			rows.push(
+				padSegs(
+					[seg(`   ↓ ${below} more below`, 'faint', 'overlay')],
+					w,
+					'overlay',
+				),
+			);
+		}
+		return rows;
+	};
+
+	let badgeCol = 0;
+	const optionRow = (r: Row): Seg[] => {
+		if ('header' in r) {
+			return padSegs([seg(`   ${r.header}`, 'faint', 'overlay')], w, 'overlay');
+		}
+		const isSel = r.idx === sel;
+		const isCurrent = spec.isCurrent?.(r.opt) ?? false;
+		const badge = spec.badge?.(r.opt) ?? null;
+		const bbg = isSel ? 'pkSel' : 'overlay';
+		const badgeSegs = badge
+			? [
+					seg(' '.repeat(Math.max(0, badgeCol - strWidth(r.opt.name)) + 2), 'plain', bbg),
+					seg('✱', badge, bbg),
+				]
+			: [];
+		const meta = spec.rowMeta?.(r.opt, isSel ? 'pkSel' : 'overlay') ?? [];
+		const metaW = meta.reduce((a, s) => a + strWidth(s.t), 0);
+		if (isSel) {
+			const ctl = [
+				...(spec.control?.(r.opt, 'pkSel') ?? []),
+				...meta,
+			];
+			const ctlW = ctl.reduce((a, s) => a + strWidth(s.t), 0);
+			const nameW = strWidth(`❯ ${r.opt.name}`) + segsWidth(badgeSegs);
+			const gap = Math.max(1, w - 2 - nameW - ctlW);
+			return padSegs(
+				truncSegs(
+					[
+						seg(' ❯ ', 'pk', 'pkSel'),
+						seg(r.opt.name, 'pk', 'pkSel'),
+						...badgeSegs,
+						seg(' '.repeat(gap), 'plain', 'pkSel'),
+						...ctl,
+						seg('  ', 'plain', 'pkSel'),
+					],
+					w,
+				),
+				w,
+				'pkSel',
+			);
+		}
+		const nameSegs = [
+			seg('   ', 'plain', 'overlay'),
+			seg(r.opt.name, 'text', 'overlay'),
+			...badgeSegs,
+			...(isCurrent ? [seg(' •', 'faint', 'overlay')] : []),
+		];
+		if (meta.length === 0) {
+			return padSegs(truncSegs(nameSegs, w), w, 'overlay');
+		}
+		const gap = Math.max(
+			1,
+			w - 4 - nameSegs.reduce((a, s) => a + strWidth(s.t), 0) - metaW,
+		);
+		return padSegs(
+			truncSegs(
+				[...nameSegs, seg(' '.repeat(gap), 'plain', 'overlay'), ...meta],
+				w,
+			),
+			w,
+			'overlay',
+		);
+	};
+
+	// detail block (pricing) for the selected option — under height
+	// pressure the legend drops first, then the slider row, then the pad
+	// rows, then all of it; last resort shrinks the list window itself
+	const chrome = (spec.title ? 1 : 0) + 1 + 1; // title + search + footer
+	let visN = MAX_ROWS;
+	if (spec.maxRows !== undefined) {
+		const fits = (v: number, d: DetailRow[]) =>
+			chrome + windowRows(v).length + d.length <= spec.maxRows!;
+		if (!fits(visN, det)) det = det.filter(d => d.kind !== 'legend');
+		if (!fits(visN, det)) det = det.filter(d => d.kind !== 'slider');
+		if (!fits(visN, det)) det = det.filter(d => d.kind !== 'pad');
+		if (!fits(visN, det)) det = [];
+		while (!fits(visN, det) && visN > 3) visN--;
+	}
 
 	const rows: Seg[][] = [];
 
@@ -94,79 +221,8 @@ function pickerShell(spec: ShellSpec): Seg[][] {
 		),
 	);
 
-	if (above > 0) {
-		rows.push(
-			padSegs([seg(`   ↑ ${above} more above`, 'faint', 'overlay')], w, 'overlay'),
-		);
-	}
-
-	for (const r of window_) {
-		if ('header' in r) {
-			rows.push(
-				padSegs([seg(`   ${r.header}`, 'faint', 'overlay')], w, 'overlay'),
-			);
-			continue;
-		}
-		const isSel = r.idx === sel;
-		const isCurrent = spec.isCurrent?.(r.opt) ?? false;
-		const meta = spec.rowMeta?.(r.opt, isSel ? 'pkSel' : 'overlay') ?? [];
-		const metaW = meta.reduce((a, s) => a + strWidth(s.t), 0);
-		if (isSel) {
-			const ctl = [
-				...(spec.control?.(r.opt, 'pkSel') ?? []),
-				...meta,
-			];
-			const ctlW = ctl.reduce((a, s) => a + strWidth(s.t), 0);
-			const nameW = strWidth(`❯ ${r.opt.name}`);
-			const gap = Math.max(1, w - 2 - nameW - ctlW);
-			rows.push(
-				padSegs(
-					truncSegs(
-						[
-							seg(' ❯ ', 'pk', 'pkSel'),
-							seg(r.opt.name, 'pk', 'pkSel'),
-							seg(' '.repeat(gap), 'plain', 'pkSel'),
-							...ctl,
-							seg('  ', 'plain', 'pkSel'),
-						],
-						w,
-					),
-					w,
-					'pkSel',
-				),
-			);
-		} else {
-			const nameSegs = [
-				seg('   ', 'plain', 'overlay'),
-				seg(r.opt.name, 'text', 'overlay'),
-				...(isCurrent ? [seg(' •', 'faint', 'overlay')] : []),
-			];
-			if (meta.length === 0) {
-				rows.push(padSegs(truncSegs(nameSegs, w), w, 'overlay'));
-			} else {
-				const gap = Math.max(
-					1,
-					w - 4 - nameSegs.reduce((a, s) => a + strWidth(s.t), 0) - metaW,
-				);
-				rows.push(
-					padSegs(
-						truncSegs(
-							[...nameSegs, seg(' '.repeat(gap), 'plain', 'overlay'), ...meta],
-							w,
-						),
-						w,
-						'overlay',
-					),
-				);
-			}
-		}
-	}
-
-	if (below > 0) {
-		rows.push(
-			padSegs([seg(`   ↓ ${below} more below`, 'faint', 'overlay')], w, 'overlay'),
-		);
-	}
+	rows.push(...windowRows(visN));
+	for (const d of det) rows.push(padSegs(truncSegs(d.row, w), w, 'overlay'));
 
 	// footer hints
 	rows.push(
@@ -194,6 +250,168 @@ function pickerShell(spec: ShellSpec): Seg[][] {
 	return rows;
 }
 
+// ---- pricing detail (model catalog) ----------------------------------------
+
+const SLIDER_W = 30;
+
+// green → yellow → orange → purple, RGB-interpolated per cell; the token
+// is the nearest stop (ANSI fallback), `hex` the truecolor gradient color
+const STOPS: {t: number; rgb: [number, number, number]; tok: Token}[] = [
+	{t: 0.0, rgb: [0x3d, 0xdc, 0x84], tok: 'pkGreen'},
+	{t: 0.4, rgb: [0xe6, 0xd1, 0x7a], tok: 'pkYellow'},
+	{t: 0.7, rgb: [0xe5, 0xa0, 0x7a], tok: 'pkOrange'},
+	{t: 1.0, rgb: [0xb4, 0x8e, 0xad], tok: 'pkPurple'},
+];
+
+function gradAt(t: number): {hex: string; tok: Token} {
+	for (let i = 1; i < STOPS.length; i++) {
+		if (t <= STOPS[i].t) {
+			const a = STOPS[i - 1];
+			const b = STOPS[i];
+			const f = (t - a.t) / (b.t - a.t);
+			const mix = a.rgb.map((v, j) =>
+				Math.round(v + (b.rgb[j] - v) * f),
+			);
+			return {
+				hex: `#${mix.map(v => v.toString(16).padStart(2, '0')).join('')}`,
+				tok: f < 0.5 ? a.tok : b.tok,
+			};
+		}
+	}
+	const last = STOPS[STOPS.length - 1];
+	return {hex: '#b48ead', tok: last.tok};
+}
+
+/** Three text columns spread across `span` cells: left/center/right. */
+function spread3(a: string, b: string, c: string, span: number, k: Token): Seg[] {
+	const aw = strWidth(a);
+	const bw = strWidth(b);
+	const cw = strWidth(c);
+	const bx = Math.max(aw + 1, Math.floor((span - bw) / 2));
+	const cx = Math.max(bx + bw + 1, span - cw);
+	return [
+		seg(a, k, 'overlay'),
+		seg(' '.repeat(bx - aw), k, 'overlay'),
+		seg(b, k, 'overlay'),
+		seg(' '.repeat(cx - bx - bw), k, 'overlay'),
+		seg(c, k, 'overlay'),
+	];
+}
+
+function badgeFor(cat: ModelCatalog, uid: string): Token | null {
+	const e = cat.get(uid);
+	if (!e) return null;
+	return e.isNew ? 'pkGreen' : e.isBeta ? 'pkYellow' : null;
+}
+
+/** The ` ✱ New  ✱ Beta` legend — only for badges present in `uids`. */
+function legendRows(uids: string[], cat: ModelCatalog): DetailRow[] {
+	const hasNew = uids.some(u => cat.get(u)?.isNew);
+	const hasBeta = uids.some(u => cat.get(u)?.isBeta);
+	if (!hasNew && !hasBeta) return [];
+	const row: Seg[] = [seg('  ', 'plain', 'overlay')];
+	if (hasNew) row.push(seg('✱', 'pkGreen', 'overlay'), seg(' New', 'muted', 'overlay'));
+	if (hasNew && hasBeta) row.push(seg('   ', 'plain', 'overlay'));
+	if (hasBeta) row.push(seg('✱', 'pkYellow', 'overlay'), seg(' Beta', 'muted', 'overlay'));
+	return [{row, kind: 'legend'}];
+}
+
+/**
+ * Detail rows under the picker list for the selected model uid: a blank
+ * row, the ~30-col gradient price slider (knob at the model's output price
+ * on a log scale between the min/max output price of `allUids`), label +
+ * value rows, a blank, then the badge legend. Free models show the FREE
+ * badge instead; uids missing from the catalog show only the legend; an
+ * unavailable catalog shows the single faint hint.
+ */
+function pricingDetail(
+	uid: string | undefined,
+	allUids: string[],
+	cat: CatalogState,
+): DetailRow[] {
+	if (cat.status === 'loading') return [];
+	if (cat.status === 'unavailable') {
+		return [
+			{
+				row: [
+					seg(
+						'  prices unavailable — log in the Devin CLI (devin auth login) to load them',
+						'faint',
+						'overlay',
+					),
+				],
+				kind: 'other',
+			},
+		];
+	}
+	const legend = legendRows(allUids, cat.catalog);
+	const entry = uid ? cat.catalog.get(uid) : undefined;
+	if (!entry) return legend;
+	const pad: DetailRow = {row: [seg(' ', 'plain', 'overlay')], kind: 'pad'};
+	if (!entry.prices || entry.costTier === 'Free') {
+		return [
+			pad,
+			{
+				row: [
+					seg('  ', 'plain', 'overlay'),
+					seg(' FREE ', 'pkBadge', 'pkBlue'),
+					seg('  no quota consumed', 'muted', 'overlay'),
+				],
+				kind: 'other',
+			},
+			pad,
+			...legend,
+		];
+	}
+	const outs = allUids
+		.map(u => cat.catalog.get(u)?.prices?.output)
+		.filter((n): n is number => n !== undefined);
+	const lo = Math.min(...outs);
+	const hi = Math.max(...outs);
+	const pos =
+		outs.length > 1 && hi > lo
+			? (Math.log(entry.prices.output) - Math.log(lo)) /
+				(Math.log(hi) - Math.log(lo))
+			: 0.5;
+	const knob = Math.round(pos * (SLIDER_W - 1));
+	const slider: Seg[] = [seg('  ', 'plain', 'overlay')];
+	for (let i = 0; i < SLIDER_W; i++) {
+		if (i === knob) {
+			slider.push(seg('●', 'bright', 'overlay'));
+		} else {
+			const g = gradAt(i / (SLIDER_W - 1));
+			slider.push({t: '━', k: g.tok, bg: 'overlay', hex: g.hex});
+		}
+	}
+	const fmt = (n?: number) => (n === undefined ? '—' : `$${n} / 1M`);
+	return [
+		pad,
+		{row: slider, kind: 'slider'},
+		{
+			row: [
+				seg('  ', 'plain', 'overlay'),
+				...spread3('Input', 'Cached input', 'Output', SLIDER_W, 'muted'),
+			],
+			kind: 'other',
+		},
+		{
+			row: [
+				seg('  ', 'plain', 'overlay'),
+				...spread3(
+					fmt(entry.prices.input),
+					fmt(entry.prices.cached),
+					fmt(entry.prices.output),
+					SLIDER_W,
+					'bright',
+				),
+			],
+			kind: 'other',
+		},
+		pad,
+		...legend,
+	];
+}
+
 // ---- /model picker ---------------------------------------------------------
 
 export function pickerLines(
@@ -201,10 +419,13 @@ export function pickerLines(
 	effortOpt: SessionConfigOption | undefined,
 	view: PickerView,
 	w: number,
+	catalog: CatalogState,
+	maxRows?: number,
 ): Seg[][] {
 	const groups = configGroups(modelOpt);
 	const filtered = filteredOptions(modelOpt, view.filter);
 	const sel = Math.min(view.sel, Math.max(0, filtered.length - 1));
+	const allUids = configValues(modelOpt).map(o => o.value);
 
 	// display rows: group headers only when not filtering
 	let display: Row[] = [];
@@ -226,6 +447,10 @@ export function pickerLines(
 		display,
 		sel,
 		isCurrent: o => o.value === modelOpt.currentValue,
+		badge: o =>
+			catalog.status === 'ready' ? badgeFor(catalog.catalog, o.value) : null,
+		detail: o => pricingDetail(o?.value, allUids, catalog),
+		maxRows,
 		control: (_o, bg) =>
 			effortVals.length === 0
 				? []
@@ -306,6 +531,8 @@ export function fusionLines(
 	currentValue: unknown,
 	view: FusionView,
 	w: number,
+	catalog: CatalogState,
+	maxRows?: number,
 ): Seg[][] {
 	const filtered = filterFusion(leads, view.filter);
 	const sel = Math.min(view.sel, Math.max(0, filtered.length - 1));
@@ -338,6 +565,15 @@ export function fusionLines(
 						seg(' →', 'pkDim', bg),
 					]
 				: [],
+		// pricing for the currently selected lead+sidekick pair — the
+		// `fusion-…` uid is in the catalog too; scale over all pair values
+		detail: () =>
+			pricingDetail(
+				selLead?.pairs[skIdx]?.value,
+				leads.flatMap(l => l.pairs.map(p => p.value)),
+				catalog,
+			),
+		maxRows,
 		selectHint: 'lead',
 		midHint: 'sidekick',
 		w,

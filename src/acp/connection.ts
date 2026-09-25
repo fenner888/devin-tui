@@ -52,10 +52,26 @@ export function splitCommand(cmd: string): string[] {
 	return out;
 }
 
+/** DEVIN_TUI_DEBUG=1 enables protocol captures — session-updates.jsonl,
+ *  session-config.json and config-updates.jsonl contain session content
+ *  (file contents, command output), so they are opt-in and off by default. */
+const DEBUG = process.env.DEVIN_TUI_DEBUG === '1';
+
+/** Agent stderr log cap — over this, rotate to `.1` (replacing it) at startup. */
+const MAX_LOG_BYTES = 5 * 1024 * 1024;
+
 export function defaultLogFile(): string {
 	const dir = path.join(os.tmpdir(), 'devin-tui');
 	fs.mkdirSync(dir, {recursive: true});
-	return path.join(dir, 'devin-acp.log');
+	const file = path.join(dir, 'devin-acp.log');
+	try {
+		if (fs.statSync(file).size > MAX_LOG_BYTES) {
+			fs.renameSync(file, `${file}.1`);
+		}
+	} catch {
+		// missing file or failed rotation — diagnostics must never throw
+	}
+	return file;
 }
 
 export class AgentConn {
@@ -107,16 +123,21 @@ export class AgentConn {
 	private clientHandler(): Client {
 		return {
 			sessionUpdate: n => {
-				if (n.update.sessionUpdate === 'config_option_update') {
-					this.appendConfigUpdate(n.update);
-				}
-				if (!n.update.sessionUpdate.endsWith('_chunk')) {
-					this.appendJsonl('session-updates.jsonl', n.update);
+				if (DEBUG) {
+					if (n.update.sessionUpdate === 'config_option_update') {
+						this.appendConfigUpdate(n.update);
+					}
+					if (!n.update.sessionUpdate.endsWith('_chunk')) {
+						this.appendJsonl('session-updates.jsonl', n.update);
+					}
 				}
 				this.ev.onUpdate(n);
 			},
 			requestPermission: async req => {
-				this.appendJsonl('session-updates.jsonl', {permissionRequest: req});
+				if (DEBUG)
+					this.appendJsonl('session-updates.jsonl', {
+						permissionRequest: req,
+					});
 				return {outcome: await this.ev.onPermissionRequest(req)};
 			},
 			extNotification: (method, params) => {
@@ -243,12 +264,13 @@ export class AgentConn {
 	}
 
 	/** Dump the session/new (or session/load) config payload for later
-	 *  inspection (no secrets). */
+	 *  inspection (no secrets) — DEVIN_TUI_DEBUG=1 only. */
 	writeSessionConfig(
 		res: Pick<NewSessionResponse, 'configOptions' | 'modes' | '_meta'> & {
 			models?: unknown;
 		},
 	): void {
+		if (!DEBUG) return;
 		try {
 			const file = path.join(path.dirname(this.logFile), 'session-config.json');
 			fs.writeFileSync(
@@ -269,8 +291,10 @@ export class AgentConn {
 		}
 	}
 
-	/** Append one non-chunk session update to a diagnostics jsonl (no secrets). */
+	/** Append one non-chunk session update to a diagnostics jsonl (no
+	 *  secrets) — DEVIN_TUI_DEBUG=1 only (callers also gate). */
 	private appendJsonl(name: string, payload: unknown): void {
+		if (!DEBUG) return;
 		try {
 			fs.appendFileSync(
 				path.join(path.dirname(this.logFile), name),
@@ -281,8 +305,10 @@ export class AgentConn {
 		}
 	}
 
-	/** Append one config_option_update payload to the jsonl log. */
+	/** Append one config_option_update payload to the jsonl log —
+	 *  DEVIN_TUI_DEBUG=1 only. */
 	appendConfigUpdate(update: unknown): void {
+		if (!DEBUG) return;
 		try {
 			const file = path.join(
 				path.dirname(this.logFile),

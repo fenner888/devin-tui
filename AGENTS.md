@@ -68,14 +68,14 @@ npx tsx scripts/check-real-devin.ts
   (`ok`/`err`), diff `+`/`−` lines and stats (`diffAdd`/`diffDel` bgs),
   `$ command` highlighting (`cmdFlag`/`cmdString`), and the yellow
   `bypass permissions on` composer tag (`pkYellow`).
-- **Config capture.** Every `session/new` response's
-  `{configOptions, modes, models, _meta}` is written to
-  `$TMPDIR/devin-tui/session-config.json` (overwrite) and every
-  `config_option_update` is appended to `config-updates.jsonl` — for
-  inspecting real Devin's option ids/`_meta` after a signed-in run.
-  Authenticate request/response payloads are never written anywhere.
+- **Config capture is debug-only.** Protocol captures
+  (`session-updates.jsonl`, `session-config.json`, `config-updates.jsonl`
+  in `$TMPDIR/devin-tui/` — they contain session content) are written only
+  when `DEVIN_TUI_DEBUG=1`; off by default. Authenticate request/response
+  payloads are never written anywhere.
 - **stderr → log file.** The agent's stderr is chatty tracing. It is piped to
-  `$TMPDIR/devin-tui/devin-acp.log` — never to the terminal. `_cognition.ai/*`
+  `$TMPDIR/devin-tui/devin-acp.log` — never to the terminal — and rotated to
+  `devin-acp.log.1` at startup once it exceeds 5 MB. `_cognition.ai/*`
   extension notifications are swallowed/logged via the SDK's `extNotification`
   hook, never rendered.
 - **Alt screen hygiene.** We enter `\x1b[?1049h` + hide cursor on start and

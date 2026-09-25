@@ -7,7 +7,7 @@ logo from the real CLI.
 
 Visual style is a hybrid: OpenCode's calm layout (borderless panels,
 background shades instead of boxes, centered home screen, overlays that dim
-the background, right-aligned key hints) + Hermes's info density (dim
+the background, right-aligned key hints) + high info density (dim
 label / bright value, segmented status bar with `│` separators, two-column
 slash dropdown).
 
@@ -91,9 +91,15 @@ on a boot error).
   restore on exit/crash/SIGINT/SIGTERM (`process.on('exit')` backstop). Kill
   the agent child on exit.
 - Agent stderr → append to `$TMPDIR/devin-tui/devin-acp.log`, never the
-  terminal. `_cognition.ai/output` ext notifications append to the same log;
-  other `_cognition.ai/*` notifications are swallowed via the SDK's
-  `extNotification` hook.
+  terminal; at startup a log over 5 MB is rotated to `devin-acp.log.1`
+  (overwriting the old one). `_cognition.ai/output` ext notifications
+  append to the same log; other `_cognition.ai/*` notifications are
+  swallowed via the SDK's `extNotification` hook.
+- `DEVIN_TUI_DEBUG=1` (off by default) opts in to protocol captures —
+  `session-updates.jsonl` (every non-chunk update + permission requests),
+  `session-config.json` and `config-updates.jsonl` in the same directory.
+  They contain session content (file contents, command output), so they
+  are debug-only; authenticate payloads are never written anywhere.
 - Client capabilities: `fs.readTextFile=false`, `fs.writeTextFile=false`,
   `terminal=false`.
 
@@ -170,11 +176,13 @@ Boot / auth flow.
 
 ## Session config
 
-After every successful `session/new`, `{configOptions, modes, models,
-_meta}` from the response is written as pretty JSON (overwrite) to
-`$TMPDIR/devin-tui/session-config.json`, and every `config_option_update`
-payload is appended to `config-updates.jsonl` in the same directory.
-Authenticate request/response payloads are never written anywhere.
+With `DEVIN_TUI_DEBUG=1`, after every successful `session/new`,
+`{configOptions, modes, models, _meta}` from the response is written as
+pretty JSON (overwrite) to `$TMPDIR/devin-tui/session-config.json`, and
+every `config_option_update` payload is appended to
+`config-updates.jsonl` in the same directory. Without the flag nothing
+is captured. Authenticate request/response payloads are never written
+anywhere.
 `configOptions` is stored in state; `config_option_update` replaces the
 whole list. Derived labels: `currentModel` = the name of the current value
 of the select option with category `model` (fallback: id `model`);
@@ -334,7 +342,8 @@ as the slash dropdown, not a centered overlay):
 - Loading: transcript/plan/queue/usage/title state is cleared, the
   activity row shows `Loading session` while `session/load` is in
   flight, then the response is treated like `sessionReady` (modes,
-  configOptions, session-config.json capture, usage). Replayed
+  configOptions, session-config.json capture when `DEVIN_TUI_DEBUG=1`,
+  usage). Replayed
   `user_message_chunk` updates merge consecutive chunks into one user
   item — a live turn's own echo is still suppressed so submitted text
   never double-renders. Turn count = number of replayed user messages.

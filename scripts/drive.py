@@ -522,6 +522,19 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # README screenshot: a completed turn (tool calls + diff + permission),
+    # idle status bar — run with DRIVE_CWD=/tmp/demo-project so no personal
+    # paths appear (docs/screenshot.png)
+    "shot": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"clean up index.js"),
+        (0.3, b"\r"),
+        (9.0, b"1"),              # permission -> Yes
+        (9.0, b""),               # turn finishes -> idle frame
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # no-truecolor run ending on the model picker (inverse + ANSI fallback)
     "fallback": [
         (6.0, b"\r"),             # needsAuth menu -> auth

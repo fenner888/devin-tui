@@ -531,7 +531,7 @@ export function handoffBlock(h: HandoffInfo, w: number): Seg[][] {
 
 // ---- slash dropdown --------------------------------------------------------
 
-/** Hermes-style two-column dropdown shown above the input panel —
+/** Two-column dropdown shown above the input panel —
  *  `/` commands or `@` file mentions (prefix). */
 export function slashMenuBlock(
 	items: {name: string; description?: string}[],

@@ -2,6 +2,7 @@
   "name": "devin-tui",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "bin": {
     "devin-tui": "./bin/devin-tui.sh"
@@ -18,12 +19,12 @@
     "@agentclientprotocol/sdk": "1.4.0",
     "ink": "7.1.1",
     "react": "19.2.8",
+    "tsx": "4.23.13",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/node": "26.6.1",
     "@types/react": "19.2.18",
-    "tsx": "4.23.13",
     "typescript": "7.0.2"
   }
 }

@@ -119,7 +119,8 @@ A vertically + horizontally centered column:
    `Ask Devin to build features, fix bugs, or work on your code`), a blank
    row, the meta row (`<mode name>` accent — or `connecting…` muted before
    `sessionReady` — ` · ` muted `[<model> · ]` only when known `<~cwd>`
-   muted). Total height = 6 rows. While `working`, a 10-cell shimmer band
+   muted), then a pad row before the bottom border. Total height = 7
+   rows. While `working`, a 10-cell shimmer band
    travels the perimeter clockwise (top L→R, right T→B, bottom R→L, left
    B→T) advancing 3 cells per 80ms tick — head `shine1`, mid `shine2`,
    tail `shine3`; static bezel otherwise. The band/bezel logic lives in
@@ -334,7 +335,8 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   mode until `sessionReady`, and the model segment only when the model is
   known (config option value, else `--model`; never "default model"). The
   frame's shimmer band runs while `working`.
-- **Status bar** (one line under the panel): left
+- **Status bar** (one blank row under the panel, one blank row after the
+  bar so it doesn't sit on the last terminal row): left
   `⣿ <mode name>  │  [<title>  │  ] <model> <effort>` — the session title
   (from `session_info_update`, muted, max 30 cols) precedes
   `<model> <effort>` (effort = `thought_level` value name, omitted when

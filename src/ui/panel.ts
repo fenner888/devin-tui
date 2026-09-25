@@ -27,7 +27,7 @@ export interface PanelMeta {
 
 // ---- composer frame -------------------------------------------------------
 
-const FRAME_H = 6;
+const FRAME_H = 7;
 const BAND = 10; // shimmer band length in perimeter cells
 
 /**
@@ -172,7 +172,8 @@ export function inputPanel(
 		innerRow(2, truncSegs(inputSegs, innerW)),
 		innerRow(3, []),
 		innerRow(4, truncSegs(metaSegs, innerW)),
-		borderRow(5),
+		innerRow(5, []),
+		borderRow(6),
 	];
 }
 

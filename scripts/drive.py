@@ -244,6 +244,20 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # model picker open on the session screen at 80x24 (picker-80.png)
+    "picker80": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"hi"),
+        (0.3, b"\r"),
+        (9.0, b"1"),              # permission -> Allow
+        (6.0, b"/model"),
+        (0.3, b"\r"),             # picker open
+        (2.0, b""),
+        (0.5, ESC),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # /fusion picker: open -> cycle sidekick -> apply
     "fusion": [
         (6.0, b"\r"),             # needsAuth -> auth -> ready

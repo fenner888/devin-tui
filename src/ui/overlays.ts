@@ -536,7 +536,7 @@ export function slashMenuBlock(
 		const name = `/${item.name}`;
 		const rowSegs: Seg[] = [
 			seg(' ', 'plain', 'overlay'),
-			seg(name + ' '.repeat(Math.max(0, nameW - strWidth(name))), 'bright', 'overlay'),
+			seg(name + ' '.repeat(Math.max(1, nameW - strWidth(name))), 'bright', 'overlay'),
 			...truncSegs(
 				[seg(item.description ?? '', 'muted', 'overlay')],
 				Math.max(0, w - nameW - 2),

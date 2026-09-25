@@ -105,7 +105,7 @@ export function sessionLines(
 
 	const transH = Math.max(
 		1,
-		rows - input.length - 1 - aux.length - 1,
+		rows - input.length - 1 - aux.length - 1 - 2,
 	);
 	const all = transcriptLines(s, w, ui.tick, ui.permSel);
 	const end = Math.max(0, all.length - ui.scrollOffset);
@@ -120,8 +120,12 @@ export function sessionLines(
 	for (const l of aux) lines.push(frame(l));
 	for (const l of input) lines.push(frame(l));
 
+	// breathing room: one blank row between the composer and the status
+	// bar, and one below the status bar so it doesn't sit on the last row
+	lines.push(blankLine(cols));
 	const elapsed = s.turnStartedAt ? Date.now() - s.turnStartedAt : 0;
 	lines.push(statusBar(s, cols, ui.tick, elapsed));
+	lines.push(blankLine(cols));
 
 	while (lines.length < rows) lines.unshift(blankLine(cols));
 	if (lines.length > rows) lines.length = rows;

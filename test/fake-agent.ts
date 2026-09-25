@@ -345,11 +345,48 @@ async function runSlowTurn(): Promise<'end_turn' | 'cancelled'> {
 	return 'end_turn';
 }
 
+// ---- resumable sessions (session/list + session/load fixtures) -----------
+
+const FAKE_SESSIONS = () => [
+	{
+		sessionId: 'fake-session-newest',
+		cwd: AGENT_CWD,
+		title: 'Weather lookup',
+		updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+	},
+	{
+		sessionId: 'fake-session-middle',
+		cwd: AGENT_CWD,
+		title: 'Fix the flaky test',
+		updatedAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
+	},
+	{
+		sessionId: 'fake-session-oldest',
+		cwd: AGENT_CWD,
+		title: null,
+		updatedAt: new Date(Date.now() - 3 * 86400_000).toISOString(),
+	},
+];
+
+const NOT_AUTHENTICATED = () =>
+	new RequestError(
+		-32000,
+		'ACP host has not authenticated. Call the `authenticate` ACP method (or invoke the browser auth method to start the PKCE browser flow)',
+	);
+
 const agent: Agent = {
 	async initialize() {
 		return {
 			protocolVersion: 1,
-			agentCapabilities: {loadSession: true, logout: {}},
+			agentCapabilities: {
+				loadSession: true,
+				promptCapabilities: {image: true},
+				sessionCapabilities: {list: {}},
+				logout: {},
+				_meta: {
+					'cognition.ai/sessionListOrderBy': ['updated_at', 'created_at'],
+				},
+			},
 			authMethods: [
 				{
 					id: 'devin-browser',
@@ -362,10 +399,7 @@ const agent: Agent = {
 	},
 	async newSession() {
 		if (!authenticated) {
-			throw new RequestError(
-				-32000,
-				'ACP host has not authenticated. Call the `authenticate` ACP method (or invoke the browser auth method to start the PKCE browser flow)',
-			);
+			throw NOT_AUTHENTICATED();
 		}
 		sessionId = 'fake-' + Math.random().toString(36).slice(2, 10);
 		promptCount = 0;
@@ -389,6 +423,44 @@ const agent: Agent = {
 		await sleep(1000);
 		authenticated = true;
 		return {};
+	},
+	async listSessions(params) {
+		if (!authenticated) throw NOT_AUTHENTICATED();
+		process.stderr.write(
+			`fake-agent: list_sessions cwd=${params?.cwd ?? ''} → 3 sessions\n`,
+		);
+		return {sessions: FAKE_SESSIONS()};
+	},
+	// session/load replays history via session/update notifications before
+	// responding — mirrors real Devin's loadSession:true flow
+	async loadSession(params) {
+		if (!authenticated) throw NOT_AUTHENTICATED();
+		sessionId = params.sessionId;
+		promptCount = 0;
+		process.stderr.write(`fake-agent: load_session ${params.sessionId}\n`);
+		const replay = async (u: SessionUpdate, ms = 160) => {
+			await update(u);
+			await sleep(ms);
+		};
+		// two consecutive chunks of one user message merge into one item
+		await replay({sessionUpdate: 'user_message_chunk', content: text('summarize the ')});
+		await replay({sessionUpdate: 'user_message_chunk', content: text('workspace')});
+		await replay({sessionUpdate: 'agent_thought_chunk', content: text('Let me look at the files first.')});
+		await replay({sessionUpdate: 'agent_message_chunk', content: text('I listed ./src and skimmed package.json.')});
+		await replay({sessionUpdate: 'tool_call', toolCallId: 'tc-old#1', title: 'Listed ./src', kind: 'execute', status: 'in_progress', content: [previewResource('ls ./src')], rawInput: {command: 'ls ./src'}} as never);
+		await replay({sessionUpdate: 'tool_call_update', toolCallId: 'tc-old#1', status: 'in_progress', content: [{type: 'content', content: text('acp\nstate\nui')}], _meta: {terminal_exit: {terminal_id: 'fake-term-0', exit_code: 0, signal: null}}} as never);
+		await replay({sessionUpdate: 'tool_call_update', toolCallId: 'tc-old#1', status: 'completed'});
+		await replay({sessionUpdate: 'agent_message_chunk', content: text('Done — ./src has 3 entries.')});
+		// a second replayed user message → turns must count 2
+		await replay({sessionUpdate: 'user_message_chunk', content: text('thanks — and package.json?')});
+		await replay({sessionUpdate: 'agent_message_chunk', content: text('package.json is 22 lines.')});
+		await replay({sessionUpdate: 'session_info_update', title: 'Workspace Overview'});
+		await replay({sessionUpdate: 'available_commands_update', availableCommands: AVAILABLE_COMMANDS});
+		await replay({sessionUpdate: 'usage_update', used: 18441, size: 262000});
+		return {
+			modes: {currentModeId: 'normal', availableModes: MODES},
+			configOptions: buildConfig(),
+		};
 	},
 	async setSessionMode(params) {
 		currentMode = params.modeId;
@@ -431,10 +503,14 @@ const agent: Agent = {
 	},
 	async prompt(params) {
 		promptCount++;
+		const blocks = params.prompt.map(b => b.type).join(',');
 		const text = params.prompt
 			.map(b => (b.type === 'text' ? b.text : ''))
-			.join(' ');
-		process.stderr.write(`fake-agent: prompt #${promptCount} received: ${JSON.stringify(text)}\n`);
+			.join('');
+		process.stderr.write(`fake-agent: prompt #${promptCount} blocks: ${blocks}\n`);
+		process.stderr.write(`fake-agent: prompt #${promptCount} text:\n${text}\nfake-agent: end prompt\n`);
+		// real Devin echoes live prompts back as user_message_chunk
+		void update({sessionUpdate: 'user_message_chunk', content: {type: 'text', text}});
 		cancelled = false;
 		await sleep(2500); // mimic real Devin's ~4s TTFT before the first chunk
 		const stopReason = promptCount === 1 ? await runMainTurn() : await runSlowTurn();

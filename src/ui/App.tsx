@@ -1,5 +1,12 @@
-import React, {useCallback, useEffect, useReducer, useRef, useState} from 'react';
-import {Box, useInput, useWindowSize} from 'ink';
+import React, {
+	useCallback,
+	useEffect,
+	useMemo,
+	useReducer,
+	useRef,
+	useState,
+} from 'react';
+import {Box, useInput, usePaste, useWindowSize} from 'ink';
 import {
 	RequestError,
 	type RequestPermissionOutcome,
@@ -16,7 +23,18 @@ import {
 } from '../state/store.js';
 import {Line, useTick} from './Line.js';
 import {homeLines} from './home.js';
-import {sessionLines} from './session.js';
+import {contentWidth, sessionLines} from './session.js';
+import {
+	asImage,
+	buildBlocks,
+	listProjectFiles,
+	matchFile,
+	mentionToken,
+	moveVertical,
+	resolveMentions,
+	tokenEndingAt,
+	type ImageAttachment,
+} from '../composer.js';
 import {
 	agentCommands,
 	commandPanelBlock,
@@ -33,10 +51,13 @@ import {
 import {
 	defaultSidekickIdx,
 	filterFusion,
+	filterResume,
 	filteredOptions,
 	fusionData,
+	sortSessions,
 	type FusionView,
 	type PickerView,
+	type ResumeView,
 } from './picker.js';
 import {transcriptDigest} from './transcript.js';
 import {
@@ -63,6 +84,7 @@ function isAuthError(e: unknown): boolean {
 const LOCAL_COMMANDS: SlashCommand[] = [
 	{name: 'model', description: 'switch model and effort', local: true},
 	{name: 'fusion', description: 'choose a Fusion lead + sidekick', local: true},
+	{name: 'resume', description: 'resume a previous session', local: true},
 	{name: 'handoff', description: 'hand off to a cloud Devin', local: true},
 	{name: 'login', description: 'sign in to the agent', local: true},
 	{name: 'logout', description: 'sign out of the agent', local: true},
@@ -77,6 +99,9 @@ const LOCAL_COMMANDS: SlashCommand[] = [
 /** The /help Keys section — keep in sync with the useInput handling below. */
 export const HELP_KEYS: readonly {key: string; desc: string}[] = [
 	{key: 'enter', desc: 'send (queues while Devin works)'},
+	{key: 'alt+enter', desc: 'insert a newline (ctrl+j too)'},
+	{key: '@', desc: 'add a file to the prompt'},
+	{key: 'image path', desc: 'drag or paste an image to attach'},
 	{key: 'esc esc', desc: 'interrupt the running turn'},
 	{key: 'ctrl+p', desc: 'command panel'},
 	{key: 'ctrl+o', desc: 'expand/collapse command output'},
@@ -84,7 +109,7 @@ export const HELP_KEYS: readonly {key: string; desc: string}[] = [
 	{key: 'shift+tab', desc: 'cycle mode'},
 	{key: 'pgup/pgdn', desc: 'scroll transcript'},
 	{key: 'shift+↑/↓', desc: 'scroll one line'},
-	{key: '↑/↓', desc: 'prompt history'},
+	{key: '↑/↓', desc: 'cursor line / prompt history'},
 	{key: '/', desc: 'slash commands'},
 	{key: 'ctrl+c ctrl+c', desc: 'quit'},
 ];
@@ -99,17 +124,21 @@ interface Props {
 	cwd: string;
 	model?: string;
 	command: string;
+	/** 'continue' = newest session for cwd; otherwise a session id */
+	resume?: string;
 	onQuit: () => void;
 	onConn: (c: AgentConn) => void;
 }
 
-export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Element {
+export function App({cwd, model, command, resume, onQuit, onConn}: Props): React.JSX.Element {
 	const [state, dispatch] = useReducer(reducer, undefined, () =>
 		initialState(cwd, model, ''),
 	);
 	const {columns: cols, rows} = useWindowSize();
 	const tick = useTick(80);
 	const [prompt, setPrompt] = useState({value: '', cursor: 0});
+	const promptRef = useRef(prompt);
+	promptRef.current = prompt;
 	const [paletteSel, setPaletteSel] = useState(0);
 	const [permSel, setPermSel] = useState(0);
 	const [scrollOffset, setScrollOffset] = useState(0);
@@ -122,8 +151,14 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 	const [authSel, setAuthSel] = useState(0);
 	const [picker, setPicker] = useState<PickerView | null>(null);
 	const [fusion, setFusion] = useState<FusionView | null>(null);
+	const [resumeView, setResumeView] = useState<ResumeView | null>(null);
 	// pending /handoff confirmation — prompt prebuilt, shown above composer
 	const [handoff, setHandoff] = useState<(HandoffInfo & {prompt: string}) | null>(null);
+	// image attachment chips (▣) + the @file dropdown
+	const [atts, setAtts] = useState<ImageAttachment[]>([]);
+	const [files, setFiles] = useState<string[] | null>(null);
+	const [mentionSel, setMentionSel] = useState(0);
+	const [mentionDismiss, setMentionDismiss] = useState<number | null>(null);
 
 	const connRef = useRef<AgentConn | null>(null);
 	const stateRef = useRef<State>(state);
@@ -134,6 +169,22 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 	pickerRef.current = picker;
 	const fusionRef = useRef<FusionView | null>(fusion);
 	fusionRef.current = fusion;
+	const resumeRef = useRef<ResumeView | null>(resumeView);
+	resumeRef.current = resumeView;
+	/** -c/-r session-load intent; survives the auth detour */
+	const pendingResume = useRef(resume);
+	const filesRef = useRef<string[] | null>(null);
+	filesRef.current = files;
+	const attsRef = useRef<ImageAttachment[]>(atts);
+	attsRef.current = atts;
+	/** image attachments stashed with queued guidance while working */
+	const queuedAtts = useRef<ImageAttachment[]>([]);
+	const panelOpenRef = useRef(panelOpen);
+	panelOpenRef.current = panelOpen;
+	const helpOpenRef = useRef(helpOpen);
+	helpOpenRef.current = helpOpen;
+	const handoffRef = useRef(handoff);
+	handoffRef.current = handoff;
 	const permResolve = useRef<((o: RequestPermissionOutcome) => void) | null>(null);
 	const authMethods = useRef<AuthMethod[]>([]);
 	const history = useRef<string[]>([]);
@@ -160,11 +211,107 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 		ready.current = true;
 	}, []);
 
-	/** session/new — on the not-authenticated error, fall back to the
-	 *  needsAuth sign-in menu instead of auto-authenticating. */
+	/** session/load — wipes the session view state, replays the agent's
+	 *  history updates into it, then applies the load response like
+	 *  sessionReady (modes, config options, session-config.json). */
+	const loadSessionInto = useCallback(
+		async (conn: AgentConn, sessionId: string) => {
+			dispatch({type: 'bootStep', id: 'session', state: 'active'});
+			dispatch({type: 'loadStart'});
+			setScrollOffset(0);
+			setPrompt({value: '', cursor: 0});
+			try {
+				const res = await conn.loadSession(sessionId);
+				conn.writeSessionConfig(res);
+				dispatch({type: 'configOptions', options: res.configOptions ?? []});
+				dispatch({
+					type: 'sessionReady',
+					sessionId,
+					modes: res.modes?.availableModes.map(m => ({
+						id: m.id,
+						name: m.name,
+					})),
+					mode: res.modes?.currentModeId,
+				});
+				dispatch({type: 'bootStep', id: 'session', state: 'done'});
+				ready.current = true;
+			} finally {
+				dispatch({type: 'loadEnd'});
+			}
+		},
+		[],
+	);
+
+	/** -c/--continue + -r/--resume — pick a session id, then session/load.
+	 *  Returns true when a session was loaded; dispatches its own system
+	 *  lines for the unsupported/empty/failed cases. */
+	const tryResume = useCallback(
+		async (conn: AgentConn, want: string): Promise<boolean> => {
+			if (!conn.canLoadSession) {
+				dispatch({
+					type: 'systemMsg',
+					text: 'session resume not supported by this agent',
+				});
+				return false;
+			}
+			let id: string | undefined;
+			if (want === 'continue') {
+				if (!conn.canListSessions) {
+					dispatch({
+						type: 'systemMsg',
+						text: 'session resume not supported by this agent',
+					});
+					return false;
+				}
+				let list: Awaited<ReturnType<AgentConn['listSessions']>> = [];
+				try {
+					list = await conn.listSessions();
+				} catch (e) {
+					if (isAuthError(e)) throw e; // sign-in first, then retry
+					list = [];
+				}
+				id = sortSessions(
+					list.filter(si => !si.cwd || si.cwd === cwd),
+				)[0]?.sessionId;
+				if (!id) {
+					dispatch({
+						type: 'systemMsg',
+						text: 'no previous session in this folder',
+					});
+					return false;
+				}
+			} else {
+				id = want;
+			}
+			try {
+				await loadSessionInto(conn, id);
+				return true;
+			} catch (e) {
+				if (isAuthError(e)) throw e;
+				dispatch({
+					type: 'systemMsg',
+					text: `resume failed: ${errMsg(e)}`,
+				});
+				return false;
+			}
+		},
+		[cwd, loadSessionInto],
+	);
+
+	/** session/new (or session/load for -c/-r) — on the not-authenticated
+	 *  error, fall back to the needsAuth sign-in menu instead of
+	 *  auto-authenticating. */
 	const openSession = useCallback(
 		async (conn: AgentConn) => {
 			try {
+				const want = pendingResume.current;
+				if (want !== undefined) {
+					const done = await tryResume(conn, want);
+					pendingResume.current = undefined;
+					if (done) return;
+					await tryNewSession(conn);
+					return;
+				}
 				await tryNewSession(conn);
 			} catch (e) {
 				if (!isAuthError(e) || authMethods.current.length === 0) throw e;
@@ -173,7 +320,7 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 				dispatch({type: 'status', status: 'needsAuth'});
 			}
 		},
-		[tryNewSession],
+		[tryNewSession, tryResume],
 	);
 
 	/** Explicit sign-in: needsAuth menu Enter or /login while signed out. */
@@ -197,14 +344,14 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 			try {
 				await conn.authenticate(methodId);
 				dispatch({type: 'bootStep', id: 'auth', state: 'done'});
-				await tryNewSession(conn);
+				await openSession(conn);
 			} catch (e) {
 				dispatch({type: 'bootStep', id: 'auth', state: 'failed', detail: errMsg(e)});
 				dispatch({type: 'authError', message: errMsg(e)});
 				dispatch({type: 'status', status: 'needsAuth'});
 			}
 		},
-		[tryNewSession],
+		[openSession],
 	);
 
 	/** /login — in needsAuth picks the first method; signed in re-authenticates. */
@@ -482,6 +629,50 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 		setFusion({sel: Math.max(0, curIdx), filter: '', sk: {}});
 	}, [flash]);
 
+	/** /resume — list this cwd's sessions and open the inline picker. */
+	const openResume = useCallback(async () => {
+		const s = stateRef.current;
+		const conn = connRef.current;
+		if (s.status === 'working') {
+			flash('agent is working — esc to cancel');
+			return;
+		}
+		if (!conn || !conn.canLoadSession || !conn.canListSessions) {
+			dispatch({
+				type: 'systemMsg',
+				text: 'session resume not supported by this agent',
+			});
+			return;
+		}
+		if (!s.sessionId) {
+			dispatch({type: 'systemMsg', text: 'sign in to resume a session'});
+			return;
+		}
+		let list: Awaited<ReturnType<AgentConn['listSessions']>>;
+		try {
+			list = await conn.listSessions();
+		} catch (e) {
+			dispatch({
+				type: 'systemMsg',
+				text: `session list failed: ${errMsg(e)}`,
+			});
+			return;
+		}
+		const mine = sortSessions(
+			list.filter(si => !si.cwd || si.cwd === cwd),
+		);
+		if (mine.length === 0) {
+			dispatch({
+				type: 'systemMsg',
+				text: 'no previous sessions in this folder',
+			});
+			return;
+		}
+		setPrompt({value: '', cursor: 0});
+		setPaletteSel(0);
+		setResumeView({sel: 0, filter: '', sessions: mine});
+	}, [flash, cwd]);
+
 	/** Fusion Enter — set_config_option(model = <chosen pair value>). */
 	const applyFusion = useCallback(async () => {
 		const s = stateRef.current;
@@ -509,15 +700,18 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 
 	/** Send one prompt; on a clean turn end, flush queued guidance into the
 	 *  next prompt automatically. Self-referenced via sendPromptRef. */
-	const sendPromptRef = useRef<(t: string) => void>(() => {});
-	const sendPrompt = useCallback((t: string) => {
+	const sendPromptRef = useRef<(t: string, images?: ImageAttachment[]) => void>(
+		() => {},
+	);
+	const sendPrompt = useCallback((t: string, images: ImageAttachment[] = []) => {
 		const conn = connRef.current;
 		if (!conn || !t) return;
 		history.current.push(t);
 		histIdx.current = -1;
+		const blocks = buildBlocks(t, images, stateRef.current.cwd);
 		dispatch({type: 'userSubmit', text: t});
 		conn
-			.prompt(t)
+			.prompt(blocks)
 			.then(r => {
 				dispatch({type: 'turnEnd', stopReason: r.stopReason});
 				if (r.stopReason === 'cancelled') {
@@ -527,7 +721,10 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 				const q = stateRef.current.queued;
 				if (q.length > 0) {
 					dispatch({type: 'clearQueue'});
-					sendPromptRef.current(q.join('\n\n'));
+					sendPromptRef.current(
+						q.join('\n\n'),
+						queuedAtts.current.splice(0),
+					);
 				}
 			})
 			.catch(e => {
@@ -568,6 +765,7 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 					t === '/logout' ||
 					t === '/model' ||
 					t === '/fusion' ||
+					t === '/resume' ||
 					t === '/handoff' ||
 					t.startsWith('/handoff '))
 			) {
@@ -592,6 +790,12 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 			}
 			if (t === '/fusion') {
 				openFusion();
+				setPrompt({value: '', cursor: 0});
+				setPaletteSel(0);
+				return;
+			}
+			if (t === '/resume') {
+				void openResume();
 				setPrompt({value: '', cursor: 0});
 				setPaletteSel(0);
 				return;
@@ -627,14 +831,19 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 				return;
 			}
 			// ACP doesn't allow concurrent prompts — queue guidance typed
-			// while the agent works; it's sent when the turn ends.
+			// while the agent works; it's sent when the turn ends. Image
+			// attachments ride along with the queued text.
 			if (working) {
 				dispatch({type: 'queueMsg', text: t});
+				queuedAtts.current.push(...attsRef.current);
+				setAtts([]);
 				setPrompt({value: '', cursor: 0});
 				setPaletteSel(0);
 				setScrollOffset(0);
 				return;
 			}
+			const imgs = attsRef.current;
+			setAtts([]);
 			setPrompt({value: '', cursor: 0});
 			setPaletteSel(0);
 			if (t === '/clear') {
@@ -654,7 +863,7 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 			const q = s.queued;
 			const full = q.length > 0 ? `${q.join('\n\n')}\n\n${t}` : t;
 			if (q.length > 0) dispatch({type: 'clearQueue'});
-			sendPrompt(full);
+			sendPrompt(full, [...queuedAtts.current.splice(0), ...imgs]);
 		},
 		[onQuit, openSession, flash, openPicker, doLogin, doLogout, doStatus, sendPrompt],
 	);
@@ -706,6 +915,9 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 				case 'fusion':
 					openFusion();
 					break;
+				case 'resume':
+					void openResume();
+					break;
 				case 'model':
 					openPicker();
 					break;
@@ -732,10 +944,92 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 					break;
 			}
 		},
-		[submit, cycleMode, openPicker, openFusion, doLogin, doLogout, doStatus, openHelp, onQuit],
+		[submit, cycleMode, openPicker, openFusion, openResume, doLogin, doLogout, doStatus, openHelp, onQuit],
 	);
 
 	// ---- input ----------------------------------------------------------------
+
+	/** Insert text at the cursor; \r\n|\r become real newlines. A token that
+	 *  resolves to an existing image file becomes a ▣ chip instead of text. */
+	const insertText = useCallback((text: string) => {
+		const clean = text.replace(/\r\n|\r/g, '\n');
+		const p = promptRef.current;
+		let value = p.value.slice(0, p.cursor) + clean + p.value.slice(p.cursor);
+		let cursor = p.cursor + clean.length;
+		// image detection looks at the token the insertion ended on
+		// (allow trailing whitespace from a drag-and-drop paste)
+		const probe = value.slice(0, cursor).replace(/\s+$/, '');
+		const tok = tokenEndingAt(value, probe.length);
+		if (tok) {
+			const img = asImage(tok.text, stateRef.current.cwd);
+			if (img) {
+				value = value.slice(0, tok.start) + value.slice(tok.end);
+				cursor = tok.start;
+				if (img === 'tooLarge') {
+					dispatch({
+						type: 'systemMsg',
+						text: `image too large: ${tok.text} (max 5 MB)`,
+					});
+				} else {
+					setAtts(prev => [...prev, img]);
+				}
+			}
+		}
+		setPrompt({value, cursor});
+		setPaletteSel(0);
+		setMentionSel(0);
+		setScrollOffset(0);
+	}, []);
+
+	/** Any overlay/menu/pending state that should swallow a paste — mirrors
+	 *  the gating in useInput. */
+	const inputLocked = useCallback((s: State) => {
+		if (s.status !== 'idle' && s.status !== 'working') return true;
+		if (s.loading) return true;
+		if (s.turns === 0 && s.status !== 'idle') return true;
+		return (
+			s.permission !== undefined ||
+			pickerRef.current !== null ||
+			fusionRef.current !== null ||
+			resumeRef.current !== null ||
+			panelOpenRef.current ||
+			helpOpenRef.current ||
+			handoffRef.current !== null
+		);
+	}, []);
+
+	// @file mention state — the open token under the cursor, the lazily
+	// loaded project file list, and the filtered dropdown rows
+	const mentionTok = mentionToken(prompt.value, prompt.cursor);
+	const mentionItems =
+		mentionTok !== null && mentionTok.start !== mentionDismiss && files !== null
+			? files
+					.filter(f => matchFile(f, mentionTok.q))
+					.slice(0, 8)
+					.map(name => ({name}))
+			: [];
+	useEffect(() => {
+		if (mentionTok === null || files !== null) return;
+		let live = true;
+		void listProjectFiles(state.cwd).then(list => {
+			if (live) setFiles(list);
+		});
+		return () => {
+			live = false;
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [mentionTok !== null, files, state.cwd]);
+	// a dismissed dropdown re-arms once the @token is gone
+	useEffect(() => {
+		if (mentionTok === null && mentionDismiss !== null)
+			setMentionDismiss(null);
+	}, [mentionTok, mentionDismiss]);
+
+	// bracketed paste arrives as one string — real newlines, never a send
+	usePaste(text => {
+		if (inputLocked(stateRef.current)) return;
+		insertText(text);
+	});
 
 	useInput((input, key) => {
 		const s = stateRef.current;
@@ -776,6 +1070,8 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 			}
 			return;
 		}
+		// a session/load replay streams in read-only
+		if (s.loading) return;
 		// home screen ignores typing until the session is ready
 		if (s.turns === 0 && s.status !== 'idle') return;
 
@@ -839,6 +1135,37 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 				setFusion({...fu, filter: fu.filter.slice(0, -1), sel: 0});
 			} else if (input && !key.ctrl && !key.meta) {
 				setFusion({...fu, filter: fu.filter + input, sel: 0});
+			}
+			return;
+		}
+
+		// resume picker captures all input while open
+		const rv = resumeRef.current;
+		if (rv) {
+			const list = filterResume(rv.sessions, rv.filter);
+			const n = Math.max(1, list.length);
+			if (key.escape) {
+				setResumeView(null);
+			} else if (key.upArrow) {
+				setResumeView({...rv, sel: (rv.sel - 1 + n) % n});
+			} else if (key.downArrow) {
+				setResumeView({...rv, sel: (rv.sel + 1) % n});
+			} else if (key.return) {
+				const target = list[Math.min(rv.sel, list.length - 1)];
+				setResumeView(null);
+				const conn = connRef.current;
+				if (target && conn) {
+					void loadSessionInto(conn, target.sessionId).catch(e =>
+						dispatch({
+							type: 'systemMsg',
+							text: `resume failed: ${errMsg(e)}`,
+						}),
+					);
+				}
+			} else if (key.backspace || key.delete) {
+				setResumeView({...rv, filter: rv.filter.slice(0, -1), sel: 0});
+			} else if (input && !key.ctrl && !key.meta) {
+				setResumeView({...rv, filter: rv.filter + input, sel: 0});
 			}
 			return;
 		}
@@ -959,6 +1286,48 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 			setScrollOffset(o => Math.max(0, o - 1));
 			return;
 		}
+		// newline: alt+enter (meta+return) or ctrl+j — Ink parses a bare
+		// '\n' as name 'enter' (input '\n', no modifiers); never a send
+		if ((key.meta && key.return) || (key.ctrl && input === 'j') || input === '\n') {
+			insertText('\n');
+			return;
+		}
+
+		// @file mention dropdown — arrows/Tab/Enter/Esc belong to it
+		if (mentionItems.length > 0) {
+			if (key.upArrow) {
+				setMentionSel(i => Math.max(0, i - 1));
+				return;
+			}
+			if (key.downArrow) {
+				setMentionSel(i =>
+					Math.min(mentionItems.length - 1, i + 1),
+				);
+				return;
+			}
+			if (key.escape) {
+				setMentionDismiss(mentionTok?.start ?? null);
+				return;
+			}
+			if (key.tab || key.return) {
+				const sel =
+					mentionItems[
+						Math.min(mentionSel, mentionItems.length - 1)
+					];
+				if (sel && mentionTok) {
+					const nv =
+						prompt.value.slice(0, mentionTok.start) +
+						`@${sel.name} ` +
+						prompt.value.slice(mentionTok.end);
+					setPrompt({
+						value: nv,
+						cursor: mentionTok.start + sel.name.length + 2,
+					});
+				}
+				return;
+			}
+			// other keys fall through to editing (re-filters the list)
+		}
 
 		const filter = slashFilter(prompt.value);
 		const commands: SlashCommand[] = [...agentCommands(s), ...LOCAL_COMMANDS];
@@ -998,6 +1367,18 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 			// other keys fall through to editing (re-filters the list)
 		} else {
 			if (key.upArrow) {
+				// inside a multiline input ↑ moves the cursor; history
+				// navigation only starts on the first visual row
+				const nc = moveVertical(
+					prompt.value,
+					prompt.cursor,
+					contentWidth(cols) - 6,
+					-1,
+				);
+				if (nc !== null) {
+					setPrompt({value: prompt.value, cursor: nc});
+					return;
+				}
 				if (history.current.length > 0) {
 					if (histIdx.current === -1) {
 						histStash.current = prompt.value;
@@ -1011,6 +1392,16 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 				return;
 			}
 			if (key.downArrow) {
+				const nc = moveVertical(
+					prompt.value,
+					prompt.cursor,
+					contentWidth(cols) - 6,
+					1,
+				);
+				if (nc !== null) {
+					setPrompt({value: prompt.value, cursor: nc});
+					return;
+				}
 				if (histIdx.current !== -1) {
 					if (histIdx.current < history.current.length - 1) {
 						histIdx.current++;
@@ -1060,29 +1451,30 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 		} else if (key.ctrl && input === 'u') {
 			setPrompt(p => ({value: p.value.slice(p.cursor), cursor: 0}));
 		} else if (key.backspace || key.delete) {
-			setPrompt(p =>
-				p.cursor > 0
-					? {
-							value: p.value.slice(0, p.cursor - 1) + p.value.slice(p.cursor),
-							cursor: p.cursor - 1,
-						}
-					: p,
-			);
-			setPaletteSel(0);
+			if (prompt.cursor === 0 && attsRef.current.length > 0) {
+				// backspace on an empty input pops the last attachment chip
+				setAtts(prev => prev.slice(0, -1));
+			} else {
+				setPrompt(p =>
+					p.cursor > 0
+						? {
+								value:
+									p.value.slice(0, p.cursor - 1) +
+									p.value.slice(p.cursor),
+								cursor: p.cursor - 1,
+							}
+						: p,
+				);
+				setPaletteSel(0);
+			}
 		} else if (input && !key.ctrl && !key.meta) {
-			const clean = input.replace(/[\r\n]+/g, ' ');
-			setPrompt(p => ({
-				value: p.value.slice(0, p.cursor) + clean + p.value.slice(p.cursor),
-				cursor: p.cursor + clean.length,
-			}));
-			setPaletteSel(0);
-			setScrollOffset(0);
+			insertText(input);
 		}
 	});
 
 	// ---- render ----------------------------------------------------------------
 
-	const home = state.turns === 0;
+	const home = state.turns === 0 && !state.loading;
 	const filter = slashFilter(prompt.value);
 	const allCommands: SlashCommand[] = [
 		...agentCommands(state),
@@ -1096,6 +1488,17 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 					.map(c => ({name: c.name, description: c.description}))
 			: [];
 
+	// attachment chips: ⌗ per resolved @file mention, ▣ per image
+	const chips = [
+		...resolveMentions(prompt.value, state.cwd).map(m => ({
+			icon: '⌗',
+			label: m.rel,
+		})),
+		...atts.map(a => ({icon: '▣', label: a.name})),
+	];
+	const mentionOpen = mentionItems.length > 0;
+	const mentionSelC = Math.min(mentionSel, Math.max(0, mentionItems.length - 1));
+
 	let lines: Seg[][] = home
 		? homeLines(
 				state,
@@ -1106,9 +1509,14 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 					authSel,
 					picker: picker ?? undefined,
 					fusion: fusion ?? undefined,
+					resume: resumeView ?? undefined,
 					paletteSel,
 					slashItems,
 					slashOpen: filter !== null && slashItems.length > 0,
+					mentionItems,
+					mentionOpen,
+					mentionSel: mentionSelC,
+					chips,
 					handoff: handoff ?? undefined,
 				},
 				cols,
@@ -1124,8 +1532,13 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 					paletteSel,
 					slashItems,
 					slashOpen: filter !== null && slashItems.length > 0,
+					mentionItems,
+					mentionOpen,
+					mentionSel: mentionSelC,
+					chips,
 					modelPicker: picker ?? undefined,
 					fusion: fusion ?? undefined,
+					resume: resumeView ?? undefined,
 					permSel,
 					handoff: handoff ?? undefined,
 				},

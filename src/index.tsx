@@ -9,6 +9,8 @@ interface CliArgs {
 	cwd: string;
 	model?: string;
 	command: string;
+	/** 'continue' = newest session for cwd; otherwise a session id */
+	resume?: string;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -21,9 +23,13 @@ function parseArgs(argv: string[]): CliArgs {
 			args.model = argv[++i];
 		} else if (a === '--agent') {
 			args.command = argv[++i] ?? args.command;
+		} else if (a === '-c' || a === '--continue') {
+			args.resume = 'continue';
+		} else if (a === '-r' || a === '--resume') {
+			args.resume = argv[++i] ?? '';
 		} else if (a === '--help' || a === '-h') {
 			process.stderr.write(
-				'usage: devin-tui [--cwd <dir>] [--model <name>] [--agent "<cmd>"]\n',
+				'usage: devin-tui [--cwd <dir>] [--model <name>] [--agent "<cmd>"] [-c|--continue] [-r|--resume <id>]\n',
 			);
 			process.exit(0);
 		}
@@ -63,6 +69,7 @@ function main(): void {
 			cwd={args.cwd}
 			model={args.model}
 			command={args.command}
+			resume={args.resume}
 			onQuit={() => quit(0)}
 			onConn={c => (conn = c)}
 		/>,

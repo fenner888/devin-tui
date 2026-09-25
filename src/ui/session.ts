@@ -16,8 +16,10 @@ import {
 	fusionData,
 	fusionLines,
 	pickerLines,
+	resumeLines,
 	type FusionView,
 	type PickerView,
+	type ResumeView,
 } from './picker.js';
 import {
 	displayMode,
@@ -34,8 +36,13 @@ export interface SessionUI {
 	paletteSel: number;
 	slashItems: {name: string; description?: string}[];
 	slashOpen: boolean;
+	mentionItems: {name: string}[]; // @file dropdown rows
+	mentionOpen: boolean;
+	mentionSel: number;
+	chips: {icon: string; label: string}[]; // attachment chips in the composer
 	modelPicker?: PickerView; // /model picker state, above the input panel
 	fusion?: FusionView; // /fusion picker state, above the input panel
+	resume?: ResumeView; // /resume picker state, above the input panel
 	permSel: number; // selected option in the inline permission prompt
 	handoff?: HandoffInfo; // /handoff confirmation, above the input panel
 }
@@ -61,7 +68,9 @@ export function sessionLines(
 	const plan = s.sidebar ? planLines(s, w, ui.tick) : [];
 	const dropdown = ui.slashOpen
 		? slashMenuBlock(ui.slashItems, ui.paletteSel, w)
-		: [];
+		: ui.mentionOpen
+			? slashMenuBlock(ui.mentionItems, ui.mentionSel, w, '@')
+			: [];
 	const marker =
 		ui.scrollOffset > 0 ? [moreMarker(ui.scrollOffset, w)] : [];
 	const modelOpt =
@@ -84,6 +93,9 @@ export function sessionLines(
 					w,
 				)
 			: [];
+	const resumeRows = ui.resume
+		? resumeLines(ui.resume, s.sessionId, s.cwd, w)
+		: [];
 	const handoffRows = ui.handoff ? handoffBlock(ui.handoff, w) : [];
 	const aux = [
 		...plan,
@@ -91,6 +103,7 @@ export function sessionLines(
 		...marker,
 		...modelPk,
 		...fusionRows,
+		...resumeRows,
 		...dropdown,
 		...handoffRows,
 	];
@@ -101,7 +114,7 @@ export function sessionLines(
 		model: displayModel(s),
 		cwd: shortCwd(s.cwd),
 		working: s.status === 'working',
-	});
+	}, ui.chips);
 
 	const transH = Math.max(
 		1,

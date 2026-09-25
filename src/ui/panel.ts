@@ -7,6 +7,7 @@ import {
 	truncSegs,
 } from './lines.js';
 import os from 'node:os';
+import {cursorLine, visualLines} from '../composer.js';
 import {PLACEHOLDER, type Token} from '../theme.js';
 
 /** Collapse the user's home directory to `~`. */
@@ -27,7 +28,7 @@ export interface PanelMeta {
 
 // ---- composer frame -------------------------------------------------------
 
-const FRAME_H = 7;
+const MAX_INPUT_ROWS = 8; // input area grows to 8 lines, scrolls beyond
 const BAND = 10; // shimmer band length in perimeter cells
 
 /**
@@ -67,9 +68,10 @@ export function frameColors(
 
 /**
  * The shared input panel: a rounded bezel frame (╭─╮/│/╰─╯) on the screen
- * bg around `panel`-bg content — pad row, input row (`❯` + text or
- * placeholder + caret), blank row, meta row. A shimmer band runs the
- * perimeter while the agent works. `w` is the full frame width.
+ * bg around `panel`-bg content — pad row, attachment chips row (when any),
+ * input rows (`❯` + text or placeholder + caret; up to 8 visible lines,
+ * scrolling internally beyond), blank row, meta row. A shimmer band runs
+ * the perimeter while the agent works. `w` is the full frame width.
  */
 export function inputPanel(
 	w: number,
@@ -77,8 +79,20 @@ export function inputPanel(
 	cursor: number,
 	tick: number,
 	meta: PanelMeta,
+	chips: {icon: string; label: string}[] = [],
 ): Seg[][] {
-	const grid = frameColors(w, FRAME_H, tick, meta.working ?? false);
+	const innerW = w - 4; // '│ ' + content + ' │'
+	const room = innerW - 2; // after '❯ '
+	const vls = visualLines(value, room);
+	const vcur = cursorLine(vls, cursor);
+	const nVis = Math.min(MAX_INPUT_ROWS, vls.length);
+	// keep the cursor's row inside the visible window
+	const top = Math.min(
+		Math.max(0, vcur - nVis + 1),
+		Math.max(0, vls.length - nVis),
+	);
+	const h = 6 + nVis + (chips.length > 0 ? 1 : 0);
+	const grid = frameColors(w, h, tick, meta.working ?? false);
 
 	const borderRow = (r: number): Seg[] => {
 		const row: Seg[] = [];
@@ -112,7 +126,6 @@ export function inputPanel(
 		return row;
 	};
 
-	const innerW = w - 4; // '│ ' + content + ' │'
 	const innerRow = (r: number, segs: Seg[]): Seg[] => [
 		seg('│', grid[r][0] ?? 'bezelHi', 'bg'),
 		seg(' ', 'plain', 'panel'),
@@ -121,34 +134,41 @@ export function inputPanel(
 		seg('│', grid[r][w - 1] ?? 'bezelLo', 'bg'),
 	];
 
-	// input row content
+	// input rows: '❯ ' on the first visual line, '  ' continuation after;
+	// the cursor cell renders as an inverse block
 	const cursorOn = tick % 12 < 7;
-	const prefix = seg('❯ ', 'bright', 'panel');
-	const room = innerW - 2; // after '❯ '
-	let inputSegs: Seg[];
-	if (value.length === 0) {
-		inputSegs = [
-			prefix,
-			cursorOn ? seg(' ', 'caret', 'sel') : seg(' ', 'plain', 'panel'),
-			seg(
-				meta.working ? 'Guide Devin while it works' : PLACEHOLDER,
-				'muted',
-				'panel',
-			),
+	const inputRows: Seg[][] = [];
+	vls.slice(top, top + nVis).forEach((vl, i) => {
+		const gi = top + i;
+		const text = value.slice(vl.start, vl.start + vl.len);
+		if (value.length === 0) {
+			inputRows.push([
+				seg('❯ ', 'bright', 'panel'),
+				cursorOn ? seg(' ', 'caret', 'sel') : seg(' ', 'plain', 'panel'),
+				seg(
+					meta.working ? 'Guide Devin while it works' : PLACEHOLDER,
+					'muted',
+					'panel',
+				),
+			]);
+			return;
+		}
+		const row: Seg[] = [
+			seg(gi === 0 ? '❯ ' : '  ', gi === 0 ? 'bright' : 'muted', 'panel'),
 		];
-	} else {
-		// scroll horizontally if the input is longer than the panel
-		const start = Math.max(0, cursor - room + 1);
-		const shown = value.slice(start);
-		const shownCursor = cursor - start;
-		const at = shown[shownCursor] ?? ' ';
-		inputSegs = [
-			prefix,
-			seg(shown.slice(0, shownCursor), 'text', 'panel'),
-			cursorOn ? seg(at, 'caret', 'sel') : seg(at, 'text', 'panel'),
-			seg(shown.slice(shownCursor + 1), 'text', 'panel'),
-		];
-	}
+		if (gi === vcur) {
+			const col = cursor - vl.start;
+			const at = text[col] ?? ' ';
+			row.push(
+				seg(text.slice(0, col), 'text', 'panel'),
+				cursorOn ? seg(at, 'caret', 'sel') : seg(at, 'text', 'panel'),
+				seg(text.slice(col + 1), 'text', 'panel'),
+			);
+		} else {
+			row.push(seg(text, 'text', 'panel'));
+		}
+		inputRows.push(row);
+	});
 
 	// meta row content: <mode|connecting…> · <model?> · <cwd>
 	const metaSegs: Seg[] = [
@@ -166,15 +186,24 @@ export function inputPanel(
 	}
 	metaSegs.push(seg(' · ', 'muted', 'panel'), seg(meta.cwd, 'muted', 'panel'));
 
-	return [
-		borderRow(0),
-		innerRow(1, []),
-		innerRow(2, truncSegs(inputSegs, innerW)),
-		innerRow(3, []),
-		innerRow(4, truncSegs(metaSegs, innerW)),
-		innerRow(5, []),
-		borderRow(6),
-	];
+	const rows: Seg[][] = [];
+	let r = 0;
+	rows.push(borderRow(r++));
+	rows.push(innerRow(r++, []));
+	if (chips.length > 0) {
+		const chipSegs: Seg[] = [];
+		for (const [i, c] of chips.entries()) {
+			if (i > 0) chipSegs.push(seg('  ', 'plain', 'panel'));
+			chipSegs.push(seg(`${c.icon} `, 'faint', 'panel'), seg(c.label, 'faint', 'panel'));
+		}
+		rows.push(innerRow(r++, truncSegs(chipSegs, innerW)));
+	}
+	for (const ir of inputRows) rows.push(innerRow(r++, truncSegs(ir, innerW)));
+	rows.push(innerRow(r++, []));
+	rows.push(innerRow(r++, truncSegs(metaSegs, innerW)));
+	rows.push(innerRow(r++, []));
+	rows.push(borderRow(r));
+	return rows;
 }
 
 /** Right-aligned key hints (keys bright, labels muted). */

@@ -18,8 +18,10 @@ import {
 	fusionData,
 	fusionLines,
 	pickerLines,
+	resumeLines,
 	type FusionView,
 	type PickerView,
+	type ResumeView,
 } from './picker.js';
 import {
 	handoffBlock,
@@ -40,9 +42,14 @@ export interface HomeUI {
 	authSel: number;
 	picker?: PickerView;
 	fusion?: FusionView;
+	resume?: ResumeView;
 	paletteSel: number;
 	slashItems: {name: string; description?: string}[];
 	slashOpen: boolean;
+	mentionItems: {name: string}[];
+	mentionOpen: boolean;
+	mentionSel: number;
+	chips: {icon: string; label: string}[];
 	handoff?: HandoffInfo; // /handoff confirmation, above the composer
 }
 
@@ -133,8 +140,9 @@ export function homeLines(
 	const x = Math.max(0, Math.floor((cols - w) / 2));
 	const logoW = strWidth(LOGO_2X[0] ?? '');
 	const pkRows = (() => {
-		if ((!ui.picker && !ui.fusion) || s.status === 'needsAuth')
+		if ((!ui.picker && !ui.fusion && !ui.resume) || s.status === 'needsAuth')
 			return [] as Seg[][];
+		if (ui.resume) return resumeLines(ui.resume, s.sessionId, s.cwd, w);
 		const mo = findConfigOption(s, 'model');
 		if (!mo) return [] as Seg[][];
 		if (ui.fusion) {
@@ -150,7 +158,9 @@ export function homeLines(
 	const slashRows =
 		ui.slashOpen && s.status !== 'needsAuth'
 			? slashMenuBlock(ui.slashItems, ui.paletteSel, w)
-			: [];
+			: ui.mentionOpen && s.status !== 'needsAuth'
+				? slashMenuBlock(ui.mentionItems, ui.mentionSel, w, '@')
+				: [];
 	const handoffRows =
 		ui.handoff && s.status !== 'needsAuth'
 			? handoffBlock(ui.handoff, w)
@@ -246,13 +256,15 @@ export function homeLines(
 						model: displayModel(s),
 						cwd: shortCwd(s.cwd),
 						working: s.status === 'working',
-					}).map(row => at(x, row)),
+					}, ui.chips).map(row => at(x, row)),
 					at(
 						x,
 						hintsLine(w, [
 							['shift+tab', 'mode'],
 							['ctrl+p', 'commands'],
-							['/', 'slash'],
+							['alt+enter', 'newline'],
+							['@', 'file'],
+							['▣', 'drop image'],
 						]),
 					),
 				]),

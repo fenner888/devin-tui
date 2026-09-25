@@ -75,6 +75,14 @@ on a boot error).
 - `--model <name>` — appended as `--model <name>` to the agent command.
 - `--agent "<cmd>"` — override spawned command (default `devin acp`; used
   with `test/fake-agent.ts`).
+- `-c` / `--continue` — resume the most recent session for the cwd:
+  `session/list` filtered by cwd, newest `updatedAt` first (Devin's
+  `_meta["cognition.ai/sessionListOrderBy"]` is `["updated_at",
+  "created_at"]`), then `session/load`. No match → a fresh session plus a
+  system line `no previous session in this folder`. The intent survives
+  the auth detour (list errors that are auth failures rethrow and retry
+  after sign-in).
+- `-r <id>` / `--resume <id>` — load a specific session id the same way.
 
 ## Process / lifecycle
 
@@ -115,12 +123,17 @@ A vertically + horizontally centered column:
 3. The input panel (composer), width `min(78, cols-8)` — a rounded bezel
    frame `╭─…─╮` / `│ … │` / `╰─…─╯` drawn in `bezel*` tokens on the screen
    `bg`, with `panel` bg inside and 1 col of horizontal padding. Content
-   rows: one pad row, the input row (`❯` + text or the muted placeholder
-   `Ask Devin to build features, fix bugs, or work on your code`), a blank
-   row, the meta row (`<mode name>` accent — or `connecting…` muted before
+   rows: one pad row, an attachment-chips row only when chips exist
+   (`⌗ <path>` file chips / `▣ <name>` image chips, faint), the input
+   rows (`❯ ` + text or the muted placeholder `Ask Devin to build
+   features, fix bugs, or work on your code` — `❯` on the first visual
+   row, 2-col continuation indent after), a blank row, the meta row
+   (`<mode name>` accent — or `connecting…` muted before
    `sessionReady` — ` · ` muted `[<model> · ]` only when known `<~cwd>`
-   muted), then a pad row before the bottom border. Total height = 7
-   rows. While `working`, a 10-cell shimmer band
+   muted), then a pad row before the bottom border. The input is
+   multiline (see Composer / input): up to 8 visible rows, internal
+   scrolling beyond. Total height = 6 + visible input rows (+1 when chips
+   exist). While `working`, a 10-cell shimmer band
    travels the perimeter clockwise (top L→R, right T→B, bottom R→L, left
    B→T) advancing 3 cells per 80ms tick — head `shine1`, mid `shine2`,
    tail `shine3`; static bezel otherwise. The band/bezel logic lives in
@@ -133,8 +146,8 @@ A vertically + horizontally centered column:
    border, same width — including on the home screen, where an open
    dropdown may push the logo/title rows off the top so the composer
    stays fully visible.
-4. Right-aligned under the panel: `shift+tab mode   ctrl+p commands   /
-   slash` — keys bright, labels muted.
+4. Right-aligned under the panel: `shift+tab mode   ctrl+p commands
+   alt+enter newline   @ file   ▣ drop image` — keys bright, labels muted.
 5. While booting/auth: step rows (spinner / `✓` / `✗` + label, muted detail —
    the auth step's own detail is `sign in via your browser…`); during auth a
    faint `q to quit` line follows; errors show the message + log path +
@@ -187,6 +200,65 @@ as the slash dropdown, not a centered overlay):
   then for `thought_level` if changed; errors surface as a system line.
   Esc closes without changes. Opening while `working` is blocked by the
   existing `agent is working` notice.
+
+## Composer / input
+
+- **Multiline**: `alt+enter` (meta+return, i.e. `ESC CR`) or `ctrl+j` (a
+  bare `\n` — Ink parses it as name `enter`, `input='\n'`, no modifiers)
+  inserts a newline; `Enter` (`\r`, `key.return`) sends. Pasted text
+  arrives via Ink's `usePaste` (bracketed paste `\x1b[?2004h`, separate
+  event channel) — `\r\n` and `\r` inside pastes normalize to real
+  newlines and never submit. The input grows with content up to 8
+  visible rows and scrolls internally; `↑`/`↓` move the cursor between
+  visual rows (hard newlines + soft wraps) keeping the column — history
+  navigation only engages when the cursor is on the first (↑) or last
+  (↓) visual row. All editing helpers live in `src/composer.ts`
+  (`visualLines`, `cursorLine`, `moveVertical`).
+- **@file mentions**: typing `@` at a word start opens a dropdown in the
+  slash-dropdown slot/style (same `slashMenuBlock`, `@` prefix) listing
+  project files — `git ls-files -co --exclude-standard` inside a git
+  repo, else a bounded walk (skips `node_modules`/`.git`, ≤5000 entries).
+  Rows filter by substring-then-subsequence match on the text after `@`,
+  max 8. `Tab`/`Enter` inserts `@<relative path> `, `Esc` dismisses until
+  the token is deleted. On send, every `@path` token that resolves to an
+  existing file inside cwd stays in the text block AND adds a
+  `resource_link` block `{type:'resource_link', uri:'file://<abs>',
+  name:<basename>}`; resolved mentions render as `⌗ <path>` chips on the
+  chip row.
+- **Images**: a typed or pasted token that is a path to an existing
+  image (`.png .jpg .jpeg .gif .webp` — quoted or shell-escaped paths
+  and `~` are unwrapped, matching terminal drag-and-drop) is removed
+  from the text and becomes a `▣ <name>` chip. On send each chip adds an
+  `image` block `{type:'image', mimeType, data:<base64>}`; files over
+  5 MB are skipped with an `image too large` system line. Backspace at
+  the start of an empty input pops the last chip. Image attachments ride
+  along with queued guidance submitted while `working`.
+- Prompts are sent as `session/prompt` content blocks: the text block
+  first, then one `resource_link` per resolved mention, then one `image`
+  per chip.
+
+## /resume — session picker
+
+- `/resume` (local command `resume a previous session`), the command
+  panel's **Resume session** (Session section, hint `/resume`), `-c` and
+  `-r` all use ACP `session/list` + `session/load` (never
+  `session/resume`); requires `sessionCapabilities.list` / `loadSession`.
+- The picker renders with `pickerShell` in the model-picker slot: title
+  row `Resume · <cwd>` muted, ` / type to search` filter, sessions for
+  the current cwd newest-`updatedAt`-first — title (or `Untitled`)
+  bright/selection-blue, right-aligned faint `<relative time> · <short
+  id>` (`just now`, `5m ago`, `2h ago`, `3d ago`), current session
+  marked `•`, footer `↑↓ session · ↵ confirm · esc cancel`. Enter loads;
+  Esc cancels. Blocked while `working`; empty list / unsupported →
+  system line.
+- Loading: transcript/plan/queue/usage/title state is cleared, the
+  activity row shows `Loading session` while `session/load` is in
+  flight, then the response is treated like `sessionReady` (modes,
+  configOptions, session-config.json capture, usage). Replayed
+  `user_message_chunk` updates merge consecutive chunks into one user
+  item — a live turn's own echo is still suppressed so submitted text
+  never double-renders. Turn count = number of replayed user messages.
+  After loading, the session screen shows (not home), tail-followed.
 
 ## /fusion — Fusion picker
 
@@ -362,8 +434,9 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   home in `needsAuth`; a method-not-found error shows a system line),
   `/status` (system line `signed in|signed out · <agentTitle> · session
   <short id|—> · log <path>`), `/handoff [task]` (see below), `/fusion`
-  (see below), `/help` (see Overlays → Help). Agent-advertised commands named `login`,
-  `logout`, `status`, `model`, `handoff`, `fusion` or `help` are filtered out of
+  (see below), `/resume` (see above — session picker), `/help` (see
+  Overlays → Help). Agent-advertised commands named `login`,
+  `logout`, `status`, `model`, `handoff`, `fusion`, `resume` or `help` are filtered out of
   the Agent section and slash dropdown so local commands always win.
 
 ## /handoff — hand off to a cloud Devin
@@ -417,7 +490,7 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
   separated by a blank row — **Session** (New session → `/clear`, Toggle
   plan, Cycle mode, Toggle command output → `ctrl+o`, Hand off to cloud
   Devin → `/handoff`, Switch to Fusion → `/fusion`, Switch model →
-  `/model`), **Agent** (every advertised
+  `/model`, Resume session → `/resume`), **Agent** (every advertised
   ACP command minus the locally-handled names), **Account** (Sign in, Sign
   out, Status), **App** (Help → `/help`, Quit). Items are
   two-column: name bright padded to the widest name + 2, description muted;
@@ -442,7 +515,9 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
 - **Slash dropdown**: typing `/` at the start of input opens a two-column
   dropdown directly above the input panel (`/name` bright padded,
   description muted), `overlay` bg, selected row full-width selection
-  colors, max 8 rows. ↑↓ select, Tab/Enter complete, Esc closes.
+  colors, max 8 rows. ↑↓ select, Tab/Enter complete, Esc closes. The same
+  block with an `@` prefix hosts the file-mention dropdown (see Composer
+  / input).
 - **Permission**: there is no permission overlay — requests render inline
   in the transcript under their tool call (see Session screen → Inline
   permission). The dimmed-backdrop overlay style is used only by the
@@ -451,9 +526,14 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
 ## Keys
 
 - Esc: while working, double-press within 1.5s cancels the turn (first
-  press shows `press esc again to interrupt`); close palette/panel;
-  resolve a pending permission (reject_once, else cancelled); clear input
-  when idle.
+  press shows `press esc again to interrupt`); close palette/panel/
+  mention dropdown; resolve a pending permission (reject_once, else
+  cancelled); clear input when idle.
+- Enter sends; Alt+Enter / Ctrl+J insert a newline (see Composer /
+  input). `↑`/`↓` move the cursor between visual rows of a multiline
+  input — prompt history only from the first/last row. Tab/Enter accept
+  an `@file` dropdown row; Backspace on an empty input pops the last
+  attachment chip.
 - Shift+Tab: cycle modes via `session/set_mode` when `modes` advertised.
 - Ctrl+P: command panel. Ctrl+B: plan block toggle. Ctrl+O: expand/collapse
   command blocks. Ctrl+C twice within 1.5s
@@ -472,7 +552,11 @@ final status update has none); `_meta` is mined for `exitCode`
 (`cognition.ai/cwd`); `plan` replaces entries; `available_commands_update` and
 `current_mode_update` tracked; `usage_update` → `{used, size}` for the
 context indicator; `session_info_update` → `sessionTitle` (+ OSC terminal
-title). `pendingPermission` holds the live permission request (sessionId,
+title). `user_message_chunk` merges consecutive chunks into one user item
+during a `session/load` replay (the same update during a live turn echoes
+our own submit and is dropped — the submit already rendered it).
+`loading` is set while a `session/load` is in flight (input ignored,
+activity row reads `Loading session`). `pendingPermission` holds the live permission request (sessionId,
 toolCallId, options, `editableCommand` from the toolCall's
 `cognition.ai/editableCommand` meta); `queuedMessages` holds text
 submitted while working;
@@ -506,9 +590,15 @@ state to `needsAuth`.
   that overflows at 80 cols → failing `Ran npm test` with
   `terminal_exit` code 1; `usage_update` after each
   tool; `session_info_update` {title}; markdown incl.
-  heading/bold/code/fence/bullets), slow cancelable second turn. Every
-  received prompt is logged to stderr as `prompt #n received: "…"` so
-  queued-message delivery is verifiable.
+  heading/bold/code/fence/bullets), slow cancelable second turn.
+  `session/list` returns 3 cwd-scoped sessions with titles/updatedAt;
+  `session/load` replays a short history (merged `user_message_chunk`s,
+  thought, messages, a completed execute call, `session_info_update`,
+  `usage_update`) before responding. Every received prompt is logged to
+  stderr as `prompt #n blocks: <type,…>` plus the raw text between
+  `text:`/`end prompt` markers so content-block types (text,
+  resource_link, image) and multiline newlines are verifiable; a live
+  prompt is echoed back as `user_message_chunk` like real Devin.
 - `scripts/drive.py` — PTY driver (pty.fork + TIOCSWINSZ + timed keystrokes,
   raw capture). `\r` must be sent as its own write (Ink 7 treats `\r` inside
   a multi-byte chunk as paste text, not Enter). Scenario `png` covers
@@ -522,7 +612,12 @@ state to `needsAuth`.
   a pair; `help`/`help80` cover the /help overlay (sections, filter,
   Enter-inserts-command, scroll markers); `real`/`real80` cover the real-Devin payload turn (collapsed
   lines, expanded blocks, six-option permission, long-diff clamping);
-  `fallback` ends on the picker without truecolor.
+  `resume`/`continue`/`resumeid` cover the /resume picker, `-c` and
+  `-r`; `multiline`/`multiline80` cover alt+enter/ctrl+j/bracketed-paste
+  newlines; `mention` covers the `@` dropdown; `attachments` covers the
+  ⌗/▣ chips and the `text,resource_link,image` prompt; `realedit` (with
+  `DRIVE_AGENT=real DRIVE_CWD=<scratch repo>`) is the real-Devin edit
+  test; `fallback` ends on the picker without truecolor.
 - `scripts/snapshot.ts` — ANSI → screen emulator; `--after <marker>` dumps
   the first complete frame containing the marker, `--after-last` the last,
   `--before` the last complete frame before the marker's sync block

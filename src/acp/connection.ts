@@ -9,12 +9,15 @@ import {
 	PROTOCOL_VERSION,
 	type AuthenticateResponse,
 	type Client,
+	type ContentBlock,
 	type InitializeResponse,
+	type LoadSessionResponse,
 	type NewSessionResponse,
 	type PermissionOption,
 	type PromptResponse,
 	type RequestPermissionOutcome,
 	type RequestPermissionRequest,
+	type SessionInfo,
 	type SessionModeState,
 	type SessionNotification,
 } from '@agentclientprotocol/sdk';
@@ -62,6 +65,7 @@ export class AgentConn {
 	private child?: ChildProcessWithoutNullStreams;
 	private conn!: ClientSideConnection;
 	private logStream?: fs.WriteStream;
+	private init?: InitializeResponse;
 
 	constructor(
 		private opts: {command: string; cwd: string; model?: string},
@@ -145,7 +149,7 @@ export class AgentConn {
 	}
 
 	async initialize(): Promise<InitializeResponse> {
-		return this.conn.initialize({
+		this.init = await this.conn.initialize({
 			protocolVersion: PROTOCOL_VERSION,
 			clientCapabilities: {
 				fs: {readTextFile: false, writeTextFile: false},
@@ -153,6 +157,22 @@ export class AgentConn {
 			},
 			clientInfo: {name: 'devin-tui', title: 'Devin TUI', version: '0.1.0'},
 		});
+		return this.init;
+	}
+
+	/** agentCapabilities.loadSession — session/load support. */
+	get canLoadSession(): boolean {
+		return this.init?.agentCapabilities?.loadSession === true;
+	}
+
+	/** agentCapabilities.sessionCapabilities.list — session/list support. */
+	get canListSessions(): boolean {
+		return this.init?.agentCapabilities?.sessionCapabilities?.list != null;
+	}
+
+	/** agentCapabilities.promptCapabilities.image — image content blocks. */
+	get canPromptImages(): boolean {
+		return this.init?.agentCapabilities?.promptCapabilities?.image === true;
 	}
 
 	async authenticate(methodId: string): Promise<AuthenticateResponse> {
@@ -169,11 +189,31 @@ export class AgentConn {
 		return res;
 	}
 
-	async prompt(text: string): Promise<PromptResponse> {
+	/** session/list — sessions for this cwd (the agent orders by its own
+	 *  `cognition.ai/sessionListOrderBy`; we sort client-side too). */
+	async listSessions(): Promise<SessionInfo[]> {
+		const res = await this.conn.listSessions({cwd: this.opts.cwd});
+		return res.sessions;
+	}
+
+	/** session/load — replays the session's history via session/update
+	 *  notifications, then resolves with modes/configOptions. */
+	async loadSession(sessionId: string): Promise<LoadSessionResponse> {
+		const res = await this.conn.loadSession({
+			cwd: this.opts.cwd,
+			mcpServers: [],
+			sessionId,
+		});
+		this.sessionId = sessionId;
+		this.modes = res.modes;
+		return res;
+	}
+
+	async prompt(blocks: ContentBlock[]): Promise<PromptResponse> {
 		if (!this.sessionId) throw new Error('no session');
 		return this.conn.prompt({
 			sessionId: this.sessionId,
-			prompt: [{type: 'text', text}],
+			prompt: blocks,
 		});
 	}
 
@@ -202,8 +242,13 @@ export class AgentConn {
 		await this.conn.logout({});
 	}
 
-	/** Dump the session/new config payload for later inspection (no secrets). */
-	writeSessionConfig(res: NewSessionResponse): void {
+	/** Dump the session/new (or session/load) config payload for later
+	 *  inspection (no secrets). */
+	writeSessionConfig(
+		res: Pick<NewSessionResponse, 'configOptions' | 'modes' | '_meta'> & {
+			models?: unknown;
+		},
+	): void {
 		try {
 			const file = path.join(path.dirname(this.logFile), 'session-config.json');
 			fs.writeFileSync(

@@ -763,7 +763,7 @@ export function transcriptLines(
 			);
 		}
 	}
-	if (s.status === 'working') {
+	if (s.status === 'working' || s.loading) {
 		if (out.length > 0) out.push(blankLine(w));
 		out.push(activityLine(s, w, tick));
 	}
@@ -771,14 +771,16 @@ export function transcriptLines(
 }
 
 /** Live activity row pinned to the bottom of the transcript while a turn
- *  runs: `⠋ <Label> · <elapsed> (esc twice to interrupt)`. */
+ *  runs (or a session/load replay streams in):
+ *  `⠋ <Label> · <elapsed> (esc twice to interrupt)`. */
 function activityLine(s: State, w: number, tick: number): Seg[] {
 	const last = s.items[s.items.length - 1];
 	const toolRunning = s.items.some(
 		it => it.kind === 'tool' && isRunning(it.status),
 	);
-	const label =
-		last?.kind === 'thought'
+	const label = s.loading
+		? 'Loading session'
+		: last?.kind === 'thought'
 			? 'Thinking'
 			: toolRunning
 				? 'Running tools'
@@ -798,7 +800,9 @@ function activityLine(s: State, w: number, tick: number): Seg[] {
 		[
 			seg(`${SPINNER[tick % SPINNER.length]} `, 'bright'),
 			...labelSegs,
-			seg(` · ${elapsed} (esc twice to interrupt)`, 'faint'),
+			s.loading
+				? seg(` · ${elapsed}`, 'faint')
+				: seg(` · ${elapsed} (esc twice to interrupt)`, 'faint'),
 		],
 		w,
 	);

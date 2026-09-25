@@ -60,6 +60,7 @@ export interface PanelItem {
 		| {type: 'status'}
 		| {type: 'insert'; text: string}
 		| {type: 'help'}
+		| {type: 'resume'}
 		| {type: 'quit'};
 }
 
@@ -71,6 +72,7 @@ export const LOCAL_RESERVED = new Set([
 	'model',
 	'handoff',
 	'fusion',
+	'resume',
 	'help',
 	'exit',
 	'quit',
@@ -108,6 +110,13 @@ export function panelItems(s: State): PanelItem[] {
 			desc: 'expand or collapse command blocks',
 			hint: 'ctrl+o',
 			action: {type: 'toggleExpand'},
+		},
+		{
+			section: 'Session',
+			label: 'Resume session',
+			desc: 'resume a previous session',
+			hint: '/resume',
+			action: {type: 'resume'},
 		},
 		{
 			section: 'Session',
@@ -522,11 +531,13 @@ export function handoffBlock(h: HandoffInfo, w: number): Seg[][] {
 
 // ---- slash dropdown --------------------------------------------------------
 
-/** Hermes-style two-column dropdown shown above the input panel. */
+/** Hermes-style two-column dropdown shown above the input panel —
+ *  `/` commands or `@` file mentions (prefix). */
 export function slashMenuBlock(
 	items: {name: string; description?: string}[],
 	sel: number,
 	w: number,
+	prefix = '/',
 ): Seg[][] {
 	const shown = items.slice(0, 8);
 	const nameW = Math.min(
@@ -535,7 +546,7 @@ export function slashMenuBlock(
 	);
 	return shown.map((item, i) => {
 		const selected = i === sel;
-		const name = `/${item.name}`;
+		const name = `${prefix}${item.name}`;
 		const rowSegs: Seg[] = [
 			seg(' ', 'plain', 'overlay'),
 			seg(name + ' '.repeat(Math.max(1, nameW - strWidth(name))), 'bright', 'overlay'),

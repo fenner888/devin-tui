@@ -1,6 +1,7 @@
-import type {SessionConfigOption} from '@agentclientprotocol/sdk';
+import type {SessionConfigOption, SessionInfo} from '@agentclientprotocol/sdk';
 import {configGroups, configValues} from '../state/store.js';
 import {padSegs, seg, strWidth, truncSegs, type Seg} from './lines.js';
+import {shortCwd} from './panel.js';
 
 /**
  * The /model picker — styled after the Devin CLI's model picker (the one
@@ -47,6 +48,8 @@ interface ShellSpec {
 	isCurrent?: (o: Flat) => boolean;
 	/** right-side control on the selected row (effort bars / sidekick cycler) */
 	control?: (o: Flat, bg: 'pkSel' | 'overlay') => Seg[];
+	/** right-aligned meta on every row (e.g. resume picker's time + id) */
+	rowMeta?: (o: Flat, bg: 'pkSel' | 'overlay') => Seg[];
 	/** ↑↓ verb in the footer ('select' default, 'lead' for fusion) */
 	selectHint?: string;
 	/** ←→ label in the footer ('reasoning effort' / 'sidekick') */
@@ -106,8 +109,13 @@ function pickerShell(spec: ShellSpec): Seg[][] {
 		}
 		const isSel = r.idx === sel;
 		const isCurrent = spec.isCurrent?.(r.opt) ?? false;
+		const meta = spec.rowMeta?.(r.opt, isSel ? 'pkSel' : 'overlay') ?? [];
+		const metaW = meta.reduce((a, s) => a + strWidth(s.t), 0);
 		if (isSel) {
-			const ctl = spec.control?.(r.opt, 'pkSel') ?? [];
+			const ctl = [
+				...(spec.control?.(r.opt, 'pkSel') ?? []),
+				...meta,
+			];
 			const ctlW = ctl.reduce((a, s) => a + strWidth(s.t), 0);
 			const nameW = strWidth(`❯ ${r.opt.name}`);
 			const gap = Math.max(1, w - 2 - nameW - ctlW);
@@ -128,20 +136,29 @@ function pickerShell(spec: ShellSpec): Seg[][] {
 				),
 			);
 		} else {
-			rows.push(
-				padSegs(
-					truncSegs(
-						[
-							seg('   ', 'plain', 'overlay'),
-							seg(r.opt.name, 'text', 'overlay'),
-							...(isCurrent ? [seg(' •', 'faint', 'overlay')] : []),
-						],
+			const nameSegs = [
+				seg('   ', 'plain', 'overlay'),
+				seg(r.opt.name, 'text', 'overlay'),
+				...(isCurrent ? [seg(' •', 'faint', 'overlay')] : []),
+			];
+			if (meta.length === 0) {
+				rows.push(padSegs(truncSegs(nameSegs, w), w, 'overlay'));
+			} else {
+				const gap = Math.max(
+					1,
+					w - 4 - nameSegs.reduce((a, s) => a + strWidth(s.t), 0) - metaW,
+				);
+				rows.push(
+					padSegs(
+						truncSegs(
+							[...nameSegs, seg(' '.repeat(gap), 'plain', 'overlay'), ...meta],
+							w,
+						),
 						w,
+						'overlay',
 					),
-					w,
-					'overlay',
-				),
-			);
+				);
+			}
 		}
 	}
 
@@ -323,6 +340,80 @@ export function fusionLines(
 				: [],
 		selectHint: 'lead',
 		midHint: 'sidekick',
+		w,
+	});
+}
+
+// ---- /resume picker --------------------------------------------------------
+
+export interface ResumeView {
+	sel: number; // index into the filtered session list
+	filter: string;
+	sessions: SessionInfo[];
+}
+
+/** `just now` / `5m ago` / `2h ago` / `3d ago` for an ISO timestamp. */
+export function relTime(iso?: string | null): string {
+	if (!iso) return '';
+	const ms = Date.now() - Date.parse(iso);
+	if (!Number.isFinite(ms) || ms < 45_000) return 'just now';
+	const m = Math.floor(ms / 60_000);
+	if (m < 60) return `${m}m ago`;
+	const h = Math.floor(m / 60);
+	if (h < 24) return `${h}h ago`;
+	return `${Math.floor(h / 24)}d ago`;
+}
+
+/** Newest-updated first; falls back to createdAt then id order. */
+export function sortSessions(sessions: SessionInfo[]): SessionInfo[] {
+	return [...sessions].sort((a, b) =>
+		(b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''),
+	);
+}
+
+export function filterResume(
+	sessions: SessionInfo[],
+	filter: string,
+): SessionInfo[] {
+	const q = filter.trim().toLowerCase();
+	return sessions.filter(
+		si =>
+			!q ||
+			(si.title ?? 'untitled').toLowerCase().includes(q) ||
+			si.sessionId.toLowerCase().includes(q),
+	);
+}
+
+/** The /resume picker — pickerShell chrome with title/rows of sessions for
+ *  this cwd: title (or `Untitled`), right-aligned faint relative time +
+ *  short id, `•` on the current session. */
+export function resumeLines(
+	view: ResumeView,
+	currentId: string | undefined,
+	cwd: string,
+	w: number,
+): Seg[][] {
+	const filtered = filterResume(view.sessions, view.filter);
+	return pickerShell({
+		title: `Resume · ${shortCwd(cwd)}`,
+		filter: view.filter,
+		display: filtered.map((si, i) => ({
+			opt: {value: si.sessionId, name: si.title || 'Untitled'},
+			idx: i,
+		})),
+		sel: view.sel,
+		isCurrent: o => o.value === currentId,
+		rowMeta: (o, bg) => {
+			const si = filtered.find(x => x.sessionId === o.value);
+			if (!si) return [];
+			const when = relTime(si.updatedAt);
+			const tok = bg === 'pkSel' ? 'pkDim' : 'faint';
+			return [
+				...(when ? [seg(`${when} · `, tok, bg)] : []),
+				seg(o.value.slice(0, 8), tok, bg),
+			];
+		},
+		selectHint: 'session',
 		w,
 	});
 }

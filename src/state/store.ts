@@ -112,6 +112,13 @@ export interface State {
 	queued: string[];
 	/** ctrl+o — expand completed command blocks (collapsed by default) */
 	expandTools: boolean;
+	/** session/load in flight — transcript replays into a fresh session */
+	loading: boolean;
+	/** text of the prompt we just sent live — its user_message_chunk echo is
+	 *  swallowed so it isn't rendered twice (see applyUpdate) */
+	echoExpect?: string;
+	/** echo chunks swallowed so far for echoExpect */
+	echoBuf: string;
 }
 
 let nextId = 1;
@@ -139,6 +146,8 @@ export function initialState(cwd: string, model: string | undefined, logFile: st
 		sidebar: true,
 		queued: [],
 		expandTools: false,
+		loading: false,
+		echoBuf: '',
 	};
 }
 
@@ -166,6 +175,8 @@ export type Action =
 	| {type: 'queueMsg'; text: string}
 	| {type: 'clearQueue'}
 	| {type: 'toggleExpandTools'}
+	| {type: 'loadStart'}
+	| {type: 'loadEnd'}
 	| {type: 'notice'; text?: string};
 
 /** Devin-specific fields carried in a tool_call(_update)'s `_meta`:
@@ -293,8 +304,42 @@ function applyUpdate(state: State, update: SessionUpdate): State {
 		case 'session_info_update': {
 			return {...state, sessionTitle: update.title ?? undefined};
 		}
+		case 'user_message_chunk': {
+			const block = update.content;
+			if (block.type !== 'text') return state;
+			let st = state;
+			let text = block.text;
+			if (state.echoExpect !== undefined) {
+				const acc = state.echoBuf + block.text;
+				if (acc === state.echoExpect) {
+					// complete echo of our live prompt — swallowed
+					return {...state, echoExpect: undefined, echoBuf: ''};
+				}
+				if (state.echoExpect.startsWith(acc)) {
+					// partial echo — keep swallowing
+					return {...state, echoBuf: acc};
+				}
+				// diverged — this is a replayed message, not our echo
+				text = acc;
+				st = {...state, echoExpect: undefined, echoBuf: ''};
+			}
+			// session/load replay: consecutive chunks merge into one user
+			// item; each new item counts as a replayed user turn
+			const items = closeStreaming([...st.items]);
+			const last = items[items.length - 1];
+			if (last && last.kind === 'user') {
+				items[items.length - 1] = {...last, text: last.text + text};
+				return {...st, items};
+			}
+			items.push({kind: 'user', id: id(), text});
+			return {
+				...st,
+				items,
+				turns: st.loading ? st.turns + 1 : st.turns,
+			};
+		}
 		default:
-			// user_message_chunk, plan_update, etc. — ignored, not fatal.
+			// plan_update, etc. — ignored, not fatal.
 			return state;
 	}
 }
@@ -367,6 +412,27 @@ export function reducer(state: State, action: Action): State {
 				mode: action.mode,
 			};
 		}
+		case 'loadStart': {
+			// session/load: wipe the current session's view state; replayed
+			// updates accumulate while `loading` is set
+			return {
+				...state,
+				loading: true,
+				items: [],
+				plan: [],
+				turns: 0,
+				toolCalls: 0,
+				turnStartedAt: Date.now(),
+				permission: undefined,
+				queued: [],
+				usage: undefined,
+				sessionTitle: undefined,
+				echoExpect: undefined,
+				echoBuf: '',
+			};
+		}
+		case 'loadEnd':
+			return {...state, loading: false, turnStartedAt: undefined};
 		case 'update':
 			return applyUpdate(state, action.update);
 		case 'permission':
@@ -384,6 +450,10 @@ export function reducer(state: State, action: Action): State {
 					{kind: 'user', id: id(), text: action.text},
 				],
 				notice: undefined,
+				// the agent echoes live prompts as user_message_chunk — the
+				// next update stream's matching chunks are swallowed
+				echoExpect: action.text,
+				echoBuf: '',
 			};
 		}
 		case 'turnEnd': {
@@ -423,6 +493,8 @@ export function reducer(state: State, action: Action): State {
 				queued: [],
 				usage: undefined,
 				sessionTitle: undefined,
+				echoExpect: undefined,
+				echoBuf: '',
 			};
 		case 'toggleSidebar':
 			return {...state, sidebar: !state.sidebar};

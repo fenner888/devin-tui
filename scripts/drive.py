@@ -270,6 +270,109 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # /resume picker on the session screen -> Enter loads the newest session
+    "resume": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"hi"),
+        (0.3, b"\r"),
+        (9.0, b"1"),              # permission -> Allow
+        (6.0, b"/resume"),
+        (0.3, b"\r"),             # picker open (resume-picker.png)
+        (2.5, b"\r"),             # load newest session
+        (4.0, b""),               # replay lands (resume-loaded.png)
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # launched with -c: after auth the newest session for the cwd loads
+    # automatically (continue-flag.png)
+    "continue": [
+        (6.0, b"\r"),             # needsAuth -> auth -> resume proceeds
+        (7.0, b""),               # replay done -> session screen
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # launched with -r fake-session-middle: loads that id after auth
+    "resumeid": [
+        (6.0, b"\r"),
+        (7.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # multiline composer: alt+enter + ctrl+j + a bracketed paste -> 4-line
+    # input (multiline.png), then send (fake log proves intact newlines)
+    "multiline": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"first line"),
+        (0.3, b"\x1b\r"),         # alt+enter -> newline
+        (0.3, b"second line"),
+        (0.3, b"\n"),             # ctrl+j -> newline
+        (0.3, b"\x1b[200~third pasted\nfourth pasted\x1b[201~"),  # paste
+        (2.5, b""),               # snapshot: 4 input rows, grown frame
+        (0.3, b"\r"),             # send
+        (9.0, b"1"),              # permission -> Allow
+        (6.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # @file mention dropdown: '@theme' filters -> Tab accepts -> @src/theme.ts
+    "mention": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"check @theme"),
+        (2.5, b""),               # dropdown open (mention-dropdown.png)
+        (0.4, b"\t"),             # Tab -> '@src/theme.ts '
+        (1.5, b""),               # chip row visible
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # chips: @file + a pasted image path, then send -> text,resource_link,image
+    "attachments": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"look at @theme"),
+        (1.5, b"\t"),             # accept -> @src/theme.ts chip
+        (0.5, b" and this "),
+        (0.5, b"\x1b[200~/tmp/devin-tui-test.png\x1b[201~"),  # image paste
+        (2.0, b""),               # attachments.png: ⌗ + ▣ chips
+        (0.3, b"\r"),             # send -> fake log: text,resource_link,image
+        (9.0, b"1"),              # permission -> Allow
+        (6.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # multiline at 80x24 (multiline-80.png)
+    "multiline80": [
+        (6.0, b"\r"),
+        (2.5, b"line one"),
+        (0.3, b"\x1b\r"),
+        (0.3, b"line two"),
+        (0.3, b"\n"),
+        (0.3, b"line three"),
+        (2.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # real Devin edit test in /tmp/devin-tui-edit-test (DRIVE_AGENT=real,
+    # DRIVE_CWD=/tmp/devin-tui-edit-test): bypass via shift+tab, edit
+    # prompt, wait for the turn (real-edit.png)
+    "realedit": [
+        (8.0, b""),               # straight in (persisted auth) or menu
+        (2.0, b"\x1b[Z"),         # shift+tab x4 -> bypass
+        (0.4, b"\x1b[Z"),
+        (0.4, b"\x1b[Z"),
+        (0.4, b"\x1b[Z"),
+        (1.5, b"In hello.ts rename the function greet to greetUser, update its call site, and add a one-line comment above it. Don't run anything else."),
+        (0.3, b"\r"),
+        (75.0, b""),              # wait for the turn to finish
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # no-truecolor run ending on the model picker (inverse + ANSI fallback)
     "fallback": [
         (6.0, b"\r"),             # needsAuth menu -> auth
@@ -282,6 +385,13 @@ SCENARIOS = {
 }
 
 
+# extra CLI args per scenario (e.g. -c for --continue)
+SCENARIO_ARGS = {
+    "continue": ["-c"],
+    "resumeid": ["-r", "fake-session-middle"],
+}
+
+
 def main() -> int:
     cols, rows, rawfile, scenario = (
         int(sys.argv[1]),
@@ -291,13 +401,19 @@ def main() -> int:
     )
     events = SCENARIOS[scenario]
 
+    # DRIVE_AGENT=real -> default `devin acp`; DRIVE_CWD -> --cwd <dir>
+    agent = os.environ.get("DRIVE_AGENT", "npx tsx test/fake-agent.ts")
+    argv = ["npx", "tsx", "src/index.tsx"]
+    if agent != "real":
+        argv += ["--agent", agent]
+    if os.environ.get("DRIVE_CWD"):
+        argv += ["--cwd", os.environ["DRIVE_CWD"]]
+    argv += SCENARIO_ARGS.get(scenario, [])
+
     pid, fd = pty.fork()
     if pid == 0:
         os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        os.execvp(
-            "npx",
-            ["npx", "tsx", "src/index.tsx", "--agent", "npx tsx test/fake-agent.ts"],
-        )
+        os.execvp("npx", argv)
         os._exit(127)
 
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))

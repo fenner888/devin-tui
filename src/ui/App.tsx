@@ -25,6 +25,7 @@ import {Line, useTick} from './Line.js';
 import {homeLines} from './home.js';
 import {contentWidth, sessionLines} from './session.js';
 import {levelRank, loadCatalog, type CatalogState} from '../catalog.js';
+import {checkForUpdate} from '../update.js';
 import {
 	asImage,
 	buildBlocks,
@@ -170,6 +171,13 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			live = false;
 		};
 	}, []);
+	// update notice — fire-and-forget after mount, never blocks startup;
+	// skipped for --agent overrides (checkForUpdate gates internally)
+	useEffect(() => {
+		void checkForUpdate({enabled: command === 'devin acp'}).then(v => {
+			if (v) dispatch({type: 'updateAvailable', version: v});
+		});
+	}, [command]);
 	// image attachment chips (▣) + the @file dropdown
 	const [atts, setAtts] = useState<ImageAttachment[]>([]);
 	const [files, setFiles] = useState<string[] | null>(null);
@@ -417,6 +425,12 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			type: 'systemMsg',
 			text: `${signed} · ${s.agentTitle ?? 'agent'} · session ${sid} · log ${s.logFile ?? '—'}`,
 		});
+		if (s.updateAvailable) {
+			dispatch({
+				type: 'systemMsg',
+				text: `update v${s.updateAvailable} available — git pull`,
+			});
+		}
 	}, []);
 
 	/** /handoff — gather git context + transcript digest, then show the

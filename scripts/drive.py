@@ -535,6 +535,23 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # update notice: DEVIN_TUI_FORCE_UPDATE_CHECK=1 + DEVIN_TUI_UPDATE_URL
+    # -> a local server serving {"version":"0.2.0"}; home corner +
+    # session status bar show the notice (update-home.png/update-bar.png)
+    "update": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (3.0, b""),               # home corner: update notice
+        (0.5, b"hi"),
+        (0.3, b"\r"),             # prompt -> session view
+        (9.0, b"1"),              # permission -> Yes
+        (7.0, b""),               # idle: status bar notice
+        (0.5, b"/status"),
+        (0.3, b"\r"),             # /status line w/ update
+        (1.5, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # no-truecolor run ending on the model picker (inverse + ANSI fallback)
     "fallback": [
         (6.0, b"\r"),             # needsAuth menu -> auth

@@ -85,6 +85,44 @@ Prices and `✱ New`/`✱ Beta` badges in `/model` come from
 and refreshed on each start. If the CLI isn't signed in, the picker still
 works — pricing just stays hidden.
 
+## Updating
+
+```sh
+cd devin-tui && git pull && npm install
+```
+
+No re-link is needed — `devin-tui` on PATH points at the clone. The TUI
+shows a notice in the corner/status bar when a newer version is published
+(checked at most once per 24 h, cached in `~/.cache/devin-tui/`); set
+`DEVIN_TUI_NO_UPDATE_CHECK=1` to disable it.
+
+### Compatibility with Devin CLI updates
+
+The TUI spawns whatever `devin` is installed, so `devin update` is picked up
+automatically — models, commands, modes and reasoning levels all come from
+Devin at runtime, not from this repo. If a Devin release changes payload
+shapes, some rows may render more plainly until the TUI is updated. Tested
+with Devin CLI `3000.11.3` (ACP protocol v1). After a Devin update you can
+run:
+
+```sh
+npx tsx scripts/check-real-devin.ts
+```
+
+which verifies the ACP handshake against the installed CLI (initialize,
+auth-required `session/new`, extension-notification resilience) without
+authenticating — and open an issue if something looks off.
+
+### Releasing (maintainer)
+
+Bump `version` in `package.json`, commit, then:
+
+```sh
+git tag vX.Y.Z && git push --follow-tags
+```
+
+The version bump on `main` is what triggers users' update notice.
+
 ## Troubleshooting
 
 - Agent stderr and app diagnostics append to `$TMPDIR/devin-tui/devin-acp.log`

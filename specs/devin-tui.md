@@ -100,6 +100,20 @@ on a boot error).
   `session-config.json` and `config-updates.jsonl` in the same directory.
   They contain session content (file contents, command output), so they
   are debug-only; authenticate payloads are never written anywhere.
+- **Update check** (`src/update.ts`) — fire-and-forget after mount,
+  never blocks startup. Local version = `package.json` `version` (read
+  via `import.meta.url`); remote = `GET
+  raw.githubusercontent.com/fenner888/devin-tui/main/package.json`
+  (3 s `AbortSignal.timeout`), cached at
+  `~/.cache/devin-tui/update-check.json` `{checkedAt, latest}` with at
+  most one fetch per 24 h. Numeric `cmpSemver` on major.minor.patch;
+  `updateAvailable` in state only when remote > local → the home corner,
+  the status bar (first seg dropped under width pressure) and `/status`
+  all surface it. `DEVIN_TUI_NO_UPDATE_CHECK=1` disables it entirely;
+  `--agent` runs (tests/fake agent) skip the network unless the test-only
+  `DEVIN_TUI_FORCE_UPDATE_CHECK=1` is set. `DEVIN_TUI_UPDATE_URL` /
+  `DEVIN_TUI_UPDATE_CACHE` override the URL and cache path. Errors are
+  silent (one line to `devin-acp.log`).
 - Client capabilities: `fs.readTextFile=false`, `fs.writeTextFile=false`,
   `terminal=false`.
 
@@ -166,7 +180,9 @@ A vertically + horizontally centered column:
    `● Tip  <key> <text>` (● / Tip / key bright, rest muted) cycling ~5 tips
    every ~10s.
 6. Corners: bottom-left `~cwd` muted + ` (<branch>)` faint (omitted
-   outside a git repo), bottom-right `v0.1.0` faint — inset 2 cols on
+   outside a git repo), bottom-right `v0.1.0` faint — plus ` · update `
+   muted + `v<latest>` bright + ` available — git pull` muted when an
+   update check found a newer version — inset 2 cols on
    both sides and placed at `rows-3` (two blank rows below), matching
    the session status bar's position.
 
@@ -511,7 +527,9 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   `usage_update` (k = /1000 rounded, % = used/size rounded, omitted until
   the first update) then `● working` (spinner) / `○ idle` then
   `  ctrl+o expand|collapse  esc cancel  ctrl+p commands` (keys bright,
-  labels muted). When width is tight, drop `ctrl+o` first, then the rest
+  labels muted). When `updateAvailable` is set the right side gains a
+  leading `update v<latest> · git pull` seg (name muted, version bright) —
+  it is the FIRST thing dropped under width pressure, then `ctrl+o`, then the rest
   of the key hints, then turns/tools, then the session title, then the
   branch, then collapse the cwd to its basename (never dropped). Notices
   (`press ctrl+c again to quit`, `press esc again to
@@ -528,7 +546,10 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   (`conn.logout({})`, then clears session, transcript and config state →
   home in `needsAuth`; a method-not-found error shows a system line),
   `/status` (system line `signed in|signed out · <agentTitle> · session
-  <short id|—> · log <path>`), `/handoff [task]` (see below), `/fusion`
+  <short id|—> · log <path>`, plus a second system line `update v<latest>
+  available — git pull` when an update is known — separate so it never
+  gets clipped by the 110-col content width), `/handoff [task]` (see
+  below), `/fusion`
   (see below), `/resume` (see above — session picker), `/help` (see
   Overlays → Help). Agent-advertised commands named `login`,
   `logout`, `status`, `model`, `handoff`, `fusion`, `resume` or `help` are filtered out of

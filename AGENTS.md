@@ -92,4 +92,8 @@ npx tsx scripts/check-real-devin.ts
   widget libraries — input is hand-rolled on `useInput`.
 - **No hardcoded secrets.** Auth is the agent's browser PKCE flow via the ACP
   `authenticate` method; there is no API-key path.
+- **Network.** The only outbound call besides the agent itself is the daily
+  update check (`src/update.ts` → raw.githubusercontent.com for this repo's
+  package.json, cached 24 h, `DEVIN_TUI_NO_UPDATE_CHECK=1` to disable,
+  skipped for `--agent` runs unless `DEVIN_TUI_FORCE_UPDATE_CHECK=1`).
 - Don't commit `.snapshots/` expectations into code; snapshots are artifacts.

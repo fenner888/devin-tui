@@ -3,6 +3,7 @@ import {
 	seg,
 	padSegs,
 	blankLine,
+	segsWidth,
 	strWidth,
 	truncSegs,
 } from './lines.js';
@@ -307,7 +308,18 @@ export function homeLines(
 	// inset each side, two blank rows below
 	const cwdLabel = `  ${shortCwd(s.cwd)}`;
 	const branchLabel = s.gitBranch ? ` (${s.gitBranch})` : '';
-	const ver = `${VERSION}  `;
+	const right: Seg[] = [
+		seg(VERSION, 'faint'),
+		...(s.updateAvailable
+			? [
+					seg(' · update ', 'muted'),
+					seg(`v${s.updateAvailable}`, 'bright'),
+					seg(' available — git pull', 'muted'),
+				]
+			: []),
+		seg('  '),
+	];
+	const rightW = segsWidth(right);
 	const cornerRow = padSegs(
 		[
 			seg(cwdLabel, 'muted'),
@@ -319,11 +331,11 @@ export function homeLines(
 						cols -
 							strWidth(cwdLabel) -
 							strWidth(branchLabel) -
-							strWidth(ver),
+							rightW,
 					),
 				),
 			),
-			seg(ver, 'faint'),
+			...right,
 		],
 		cols,
 	);

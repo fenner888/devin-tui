@@ -989,11 +989,21 @@ export function statusBar(
 				seg('   '),
 			]
 		: [];
+	// update notice — the first thing dropped under width pressure
+	const upd: Seg[] = s.updateAvailable
+		? [
+				seg('update ', 'muted'),
+				seg(`v${s.updateAvailable}`, 'bright'),
+				seg(' · git pull', 'muted'),
+				seg('   '),
+			]
+		: [];
 
 	let l = [...leftSegs(true, false), ...counters];
-	let r = [...ctx, ...working, ...expandHint, ...hints];
+	let r = [...upd, ...ctx, ...working, ...expandHint, ...hints];
 	// 2-col inset each side + ≥1 gap + 1 slack
 	const over = () => segsWidth(l) + segsWidth(r) + 6 > cols;
+	if (over()) r = [...ctx, ...working, ...expandHint, ...hints];
 	if (over()) r = [...ctx, ...working, ...hints];
 	if (over()) r = [...ctx, ...working];
 	if (over()) l = leftSegs(true, false);

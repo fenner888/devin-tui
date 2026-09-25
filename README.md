@@ -1,10 +1,17 @@
 # devin-tui
 
+![devin-tui: home screen and /model picker with per-model reasoning levels and pricing](docs/demo.gif)
+
 A custom full-screen terminal UI for Devin, driven by `devin acp` (Agent Client
 Protocol — JSON-RPC over stdio). React + Ink, black & white.
 
 > Unofficial — not affiliated with or endorsed by Cognition. "Devin" and the
 > Devin logo are trademarks of Cognition.
+
+### Sessions
+
+Tool calls, inline diffs, collapsible command output, the plan and a status
+bar with folder, branch, model and context usage:
 
 ![devin-tui session](docs/screenshot.png)
 

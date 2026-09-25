@@ -63,6 +63,7 @@ import {
 import {transcriptDigest} from './transcript.js';
 import {
 	buildHandoffPrompt,
+	currentBranch,
 	gatherGitContext,
 	sendHandoff,
 } from '../handoff.js';
@@ -752,6 +753,25 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			});
 	}, []);
 	sendPromptRef.current = sendPrompt;
+
+	/** Refresh the cwd's git branch into state — fire-and-forget; only
+	 *  dispatches when the value changed. Devin may switch branches during
+	 *  a turn, so this re-runs on mount, when a turn ends and after a
+	 *  session load finishes. */
+	const refreshBranch = useCallback(() => {
+		void currentBranch(stateRef.current.cwd)
+			.then(b => {
+				if (b !== stateRef.current.gitBranch)
+					dispatch({type: 'gitBranch', branch: b});
+			})
+			.catch(() => {});
+	}, []);
+	useEffect(() => {
+		refreshBranch();
+	}, [refreshBranch]);
+	useEffect(() => {
+		if (state.status === 'idle' && !state.loading) refreshBranch();
+	}, [state.status, state.loading, refreshBranch]);
 
 	const submit = useCallback(
 		(text: string) => {

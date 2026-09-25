@@ -299,13 +299,21 @@ export function homeLines(
 
 	// corners
 	const cwdLabel = ` ${shortCwd(s.cwd)}`;
+	const branchLabel = s.gitBranch ? ` (${s.gitBranch})` : '';
 	const ver = `${VERSION} `;
 	const cornerRow = padSegs(
 		[
 			seg(cwdLabel, 'muted'),
+			seg(branchLabel, 'faint'),
 			seg(
 				' '.repeat(
-					Math.max(0, cols - strWidth(cwdLabel) - strWidth(ver)),
+					Math.max(
+						0,
+						cols -
+							strWidth(cwdLabel) -
+							strWidth(branchLabel) -
+							strWidth(ver),
+					),
 				),
 			),
 			seg(ver, 'faint'),

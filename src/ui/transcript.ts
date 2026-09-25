@@ -1,4 +1,5 @@
 import {realpathSync} from 'node:fs';
+import {basename} from 'node:path';
 import {
 	type Seg,
 	seg,
@@ -909,24 +910,39 @@ export function statusBar(
 	elapsedMs: number,
 ): Seg[] {
 	const mode = displayMode(s) ?? 'default';
-	const left: Seg[] = [
-		seg('⣿ ', 'bright'),
-		seg(mode, 'accent'),
-	];
-	const titleSegs: Seg[] = s.sessionTitle
-		? [
-				seg('  │  ', 'rule'),
-				seg(s.sessionTitle.slice(0, 30), 'muted'),
-			]
-		: [];
-	left.push(...titleSegs);
 	const model = displayModel(s);
 	const effortOpt = findConfigOption(s, 'thought_level');
 	const effort = effortOpt ? configLabel(effortOpt) : undefined;
-	if (model) {
-		left.push(seg('  │  ', 'rule'), seg(model, 'bright'));
-		if (effort) left.push(seg(` ${effort}`, 'text'));
-	}
+	// `⣿ <cwd> (<branch>) │ <mode> [│ <title>] │ <model> <effort>` — the
+	// branch and a basename-only cwd are the last things shed under width
+	// pressure (the basename never drops)
+	const leftSegs = (
+		withBranch: boolean,
+		basenameOnly: boolean,
+		withTitle = true,
+	): Seg[] => {
+		const dir = basenameOnly ? basename(s.cwd) : shortCwd(s.cwd);
+		const segs: Seg[] = [
+			seg('⣿ ', 'bright'),
+			seg(dir, 'text'),
+			...(withBranch && s.gitBranch
+				? [seg(` (${s.gitBranch})`, 'muted')]
+				: []),
+			seg('  │  ', 'rule'),
+			seg(mode, 'accent'),
+		];
+		if (withTitle && s.sessionTitle) {
+			segs.push(
+				seg('  │  ', 'rule'),
+				seg(s.sessionTitle.slice(0, 30), 'muted'),
+			);
+		}
+		if (model) {
+			segs.push(seg('  │  ', 'rule'), seg(model, 'bright'));
+			if (effort) segs.push(seg(` ${effort}`, 'text'));
+		}
+		return segs;
+	};
 	// counters are dropped first when the bar gets tight
 	const counters: Seg[] = [
 		seg('  │  ', 'rule'),
@@ -974,15 +990,17 @@ export function statusBar(
 			]
 		: [];
 
-	let l = [...left, ...counters];
+	let l = [...leftSegs(true, false), ...counters];
 	let r = [...ctx, ...working, ...expandHint, ...hints];
-	if (segsWidth(l) + segsWidth(r) + 3 > cols) r = [...ctx, ...working, ...hints];
-	if (segsWidth(l) + segsWidth(r) + 3 > cols) r = [...ctx, ...working];
-	if (segsWidth(l) + segsWidth(r) + 3 > cols) l = left;
-	// still tight (narrow terminals): drop the session title too
-	if (segsWidth(l) + segsWidth(r) + 3 > cols) {
-		l = left.filter(x => !titleSegs.includes(x));
-	}
+	const over = () => segsWidth(l) + segsWidth(r) + 3 > cols;
+	if (over()) r = [...ctx, ...working, ...hints];
+	if (over()) r = [...ctx, ...working];
+	if (over()) l = leftSegs(true, false);
+	// still tight: drop the session title, then the branch, then collapse
+	// the cwd to its basename
+	if (over()) l = leftSegs(true, false, false);
+	if (over()) l = leftSegs(false, false, false);
+	if (over()) l = leftSegs(false, true, false);
 	const gap = Math.max(1, cols - segsWidth(l) - segsWidth(r) - 1);
 	return padSegs([seg(' '), ...l, seg(' '.repeat(gap)), ...r], cols);
 }

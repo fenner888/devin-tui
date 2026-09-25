@@ -159,7 +159,8 @@ A vertically + horizontally centered column:
    `press q to quit`. Once ready: one rotating tip line
    `● Tip  <key> <text>` (● / Tip / key bright, rest muted) cycling ~5 tips
    every ~10s.
-6. Corners: bottom-left `~cwd` muted, bottom-right `v0.1.0` faint.
+6. Corners: bottom-left `~cwd` muted + ` (<branch>)` faint (omitted
+   outside a git repo), bottom-right `v0.1.0` faint.
 
 Typing is ignored until the session is ready (`status` idle); in
 `needsAuth` the input panel is replaced by the sign-in menu described in
@@ -444,8 +445,12 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   frame's shimmer band runs while `working`.
 - **Status bar** (one blank row under the panel, one blank row after the
   bar so it doesn't sit on the last terminal row): left
-  `⣿ <mode name>  │  [<title>  │  ] <model> <effort>` — the session title
-  (from `session_info_update`, muted, max 30 cols) precedes
+  `⣿ <cwd> (<branch>)  │  <mode name>  │  [<title>  │  ] <model> <effort>`
+  — `<cwd>` is `shortCwd(s.cwd)` in `text`, ` (<branch>)` muted is the
+  cwd's git branch (`currentBranch()` in handoff.ts — `git rev-parse
+  --abbrev-ref HEAD`, short sha when detached, omitted when not a repo;
+  refreshed on mount, after each turn end and after a session load); the
+  session title (from `session_info_update`, muted, max 30 cols) precedes
   `<model> <effort>` (effort = `thought_level` value name, omitted when
   none); then `  │  turns <n>  │  tools <n>` and `│  <elapsed>` only while
   working. Right: `Context: 14k / 262k tokens (5%)` from the latest
@@ -453,7 +458,8 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   the first update) then `● working` (spinner) / `○ idle` then
   `  ctrl+o expand|collapse  esc cancel  ctrl+p commands` (keys bright,
   labels muted). When width is tight, drop `ctrl+o` first, then the rest
-  of the key hints, then turns/tools, then the session title. Notices
+  of the key hints, then turns/tools, then the session title, then the
+  branch, then collapse the cwd to its basename (never dropped). Notices
   (`press ctrl+c again to quit`, `press esc again to
   interrupt`) temporarily replace the working/idle + hint segs, bright.
 - On `session_info_update` the terminal title is set via OSC
@@ -665,7 +671,9 @@ state to `needsAuth`.
   FREE, fusion pair, 80x24 shedding — needs `DEVIN_TUI_MODELS_FILE`);
   `effort` covers the reasoning-effort bars on a 3-value
   thought_level (`DEVIN_TUI_FAKE_EFFORTS=medium,high,max`) incl.
-  arrows-with-filter and the session-screen picker; `fallback` ends
+  arrows-with-filter and the session-screen picker; `branchbar`
+  (with `DRIVE_CWD=<dir>`) covers the status-bar/home-corner git
+  branch incl. a mid-run `git checkout -b` refresh; `fallback` ends
   on the picker without truecolor.
 - `scripts/snapshot.ts` — ANSI → screen emulator; `--after <marker>` dumps
   the first complete frame containing the marker, `--after-last` the last,

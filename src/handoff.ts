@@ -45,6 +45,21 @@ function capBytes(s: string, max: number): string {
 	return buf.length <= max ? s : buf.subarray(0, max).toString('utf8');
 }
 
+/** Current branch name (short sha when detached); undefined outside a
+ *  git repo or on any error. */
+export async function currentBranch(cwd: string): Promise<string | undefined> {
+	try {
+		const name = (
+			await git(['rev-parse', '--abbrev-ref', 'HEAD'], cwd)
+		).trim();
+		if (name && name !== 'HEAD') return name;
+		const sha = (await git(['rev-parse', '--short', 'HEAD'], cwd)).trim();
+		return sha || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 /** Best-effort git context — {} when cwd isn't inside a git repo. */
 export async function gatherGitContext(cwd: string): Promise<GitContext> {
 	try {

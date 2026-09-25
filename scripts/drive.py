@@ -199,6 +199,25 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # git-branch display (DRIVE_CWD=<dir>): home corner + status bar
+    # `⣿ <cwd> (<branch>)`; background `git checkout -b other` mid-run
+    # (from the driver shell) so the bar refreshes after turn 2 ends.
+    # branch-bar.png / branch-other.png
+    "branchbar": [
+        (6.0, b"\r"),
+        (2.0, b""),               # home corner shows (<branch>)
+        (0.6, b"hi"),
+        (0.3, b"\r"),
+        (7.0, b"1"),              # permission -> allow once
+        (8.0, b""),               # turn 1 ends -> bar shows (<branch>)
+        (1.0, b"again"),
+        (0.3, b"\r"),
+        (7.0, b"1"),              # permission 2
+        (9.0, b""),               # turn 2 ends -> bar shows (other)
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # real-Devin payload shapes: permission (real-permission.png) ->
     # collapsed done lines (real-collapsed.png) -> ctrl+o expanded
     # (real-expanded.png)

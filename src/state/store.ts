@@ -108,6 +108,9 @@ export interface State {
 	usage?: {used: number; size: number};
 	/** session title from session_info_update */
 	sessionTitle?: string;
+	/** cwd's git branch (short sha when detached); shown in the status bar
+	 *  and the home corner */
+	gitBranch?: string;
 	/** prompts typed while working — sent as one prompt when the turn ends */
 	queued: string[];
 	/** ctrl+o — expand completed command blocks (collapsed by default) */
@@ -158,6 +161,7 @@ export type Action =
 	| {type: 'bootInsert'; step: BootStep; before: string}
 	| {type: 'fail'; message: string}
 	| {type: 'agentInfo'; title: string}
+	| {type: 'gitBranch'; branch?: string}
 	| {type: 'authMethods'; methods: AuthMethod[]}
 	| {type: 'authError'; message?: string}
 	| {type: 'configOptions'; options: SessionConfigOption[]}
@@ -376,6 +380,8 @@ export function reducer(state: State, action: Action): State {
 		}
 		case 'agentInfo':
 			return {...state, agentTitle: action.title};
+		case 'gitBranch':
+			return {...state, gitBranch: action.branch};
 		case 'authMethods':
 			return {...state, authMethods: action.methods};
 		case 'authError':

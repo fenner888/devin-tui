@@ -1,28 +1,106 @@
 {
 	"families": [
 		{
-			"family_label": "Devin",
-			"family_uid": "Devin",
-			"slug": "devin",
+			"family_label": "SWE-2",
+			"family_uid": "swe-2",
+			"slug": "swe-2",
 			"aliases": [],
 			"variants": [
-				{"model_uid": "swe-2", "label": "SWE-2", "max_context_tokens": 262000, "cost_tier": "Free", "is_new": false, "is_beta": false},
-				{"model_uid": "swe-1.6", "label": "SWE-1.6", "max_context_tokens": 200000, "cost_tier": "Low cost", "cost_summary": "$1 / 1M Input · $0.1 / 1M Cached input · $4 / 1M Output", "is_new": false, "is_beta": false},
-				{"model_uid": "swe-1.5", "label": "SWE-1.5", "max_context_tokens": 200000, "cost_tier": "Low cost", "cost_summary": "$0.8 / 1M Input · $0.08 / 1M Cached input · $3 / 1M Output", "is_new": false, "is_beta": false}
+				{"model_uid": "swe-2", "label": "SWE-2 High", "max_context_tokens": 262000, "cost_tier": "Free"},
+				{"model_uid": "swe-2-medium", "label": "SWE-2 Medium", "max_context_tokens": 262000, "cost_tier": "Free"},
+				{"model_uid": "swe-2-max", "label": "SWE-2 Max", "max_context_tokens": 262000, "cost_tier": "Free"}
 			]
 		},
 		{
-			"family_label": "Frontier",
-			"family_uid": "Frontier",
-			"slug": "frontier",
+			"family_label": "SWE-1.6",
+			"family_uid": "swe-1-6",
+			"slug": "swe-1-6",
 			"aliases": [],
 			"variants": [
-				{"model_uid": "gpt-6-sol", "label": "GPT-6 Sol", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$2 / 1M Input · $0.2 / 1M Cached input · $10 / 1M Output", "is_new": true, "is_beta": false},
-				{"model_uid": "opus-5", "label": "Claude Opus 5", "max_context_tokens": 1000000, "cost_tier": "High cost", "cost_summary": "$10 / 1M Input · $0.25 / 1M Cached input · $50 / 1M Output", "is_new": false, "is_beta": false},
-				{"model_uid": "sonnet-5", "label": "Claude Sonnet 5", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$3 / 1M Input · $0.3 / 1M Cached input · $15 / 1M Output", "is_new": false, "is_beta": false},
-				{"model_uid": "haiku-5", "label": "Claude Haiku 5", "max_context_tokens": 300000, "cost_tier": "Low cost", "cost_summary": "$0.8 / 1M Input · $0.08 / 1M Cached input · $4 / 1M Output", "is_new": false, "is_beta": false},
-				{"model_uid": "gpt-5.4", "label": "GPT-5.4", "max_context_tokens": 500000, "cost_tier": "Med cost", "cost_summary": "$1.5 / 1M Input · $0.15 / 1M Cached input · $7.5 / 1M Output", "is_new": false, "is_beta": false},
-				{"model_uid": "gemini-4", "label": "Gemini 4", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$1.25 / 1M Input · $0.12 / 1M Cached input · $6 / 1M Output", "is_new": false, "is_beta": true}
+				{"model_uid": "swe-1.6", "label": "SWE-1.6 High", "max_context_tokens": 200000, "cost_tier": "Low cost", "cost_summary": "$1 / 1M Input · $0.1 / 1M Cached input · $4 / 1M Output"},
+				{"model_uid": "swe-1.6-max", "label": "SWE-1.6 Max", "max_context_tokens": 200000, "cost_tier": "Low cost", "cost_summary": "$1.5 / 1M Input · $0.15 / 1M Cached input · $6 / 1M Output"}
+			]
+		},
+		{
+			"family_label": "SWE-1.5",
+			"family_uid": "swe-1-5",
+			"slug": "swe-1-5",
+			"aliases": [],
+			"variants": [
+				{"model_uid": "swe-1.5", "label": "SWE-1.5 High", "max_context_tokens": 200000, "cost_tier": "Low cost", "cost_summary": "$0.8 / 1M Input · $0.08 / 1M Cached input · $3 / 1M Output"},
+				{"model_uid": "swe-1.5-low", "label": "SWE-1.5 Low", "max_context_tokens": 200000, "cost_tier": "Low cost", "cost_summary": "$0.5 / 1M Input · $0.05 / 1M Cached input · $2 / 1M Output"},
+				{"model_uid": "swe-1.5-medium", "label": "SWE-1.5 Medium", "max_context_tokens": 200000, "cost_tier": "Low cost", "cost_summary": "$0.6 / 1M Input · $0.06 / 1M Cached input · $2.5 / 1M Output"},
+				{"model_uid": "swe-1.5-max", "label": "SWE-1.5 Max", "max_context_tokens": 200000, "cost_tier": "Low cost", "cost_summary": "$1 / 1M Input · $0.1 / 1M Cached input · $4 / 1M Output"}
+			]
+		},
+		{
+			"family_label": "GPT-6 Sol",
+			"family_uid": "gpt-6-sol",
+			"slug": "gpt-6-sol",
+			"aliases": [],
+			"variants": [
+				{"model_uid": "gpt-6-sol", "label": "GPT-6 Sol Medium Thinking", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$2 / 1M Input · $0.2 / 1M Cached input · $10 / 1M Output", "is_new": true},
+				{"model_uid": "gpt-6-sol-no-thinking", "label": "GPT-6 Sol No Thinking", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$1.5 / 1M Input · $0.15 / 1M Cached input · $8 / 1M Output"},
+				{"model_uid": "gpt-6-sol-low-thinking", "label": "GPT-6 Sol Low Thinking", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$1.8 / 1M Input · $0.18 / 1M Cached input · $9 / 1M Output"},
+				{"model_uid": "gpt-6-sol-high-thinking", "label": "GPT-6 Sol High Thinking", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$2.5 / 1M Input · $0.25 / 1M Cached input · $12 / 1M Output"},
+				{"model_uid": "gpt-6-sol-xhigh-thinking", "label": "GPT-6 Sol XHigh Thinking", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$3 / 1M Input · $0.3 / 1M Cached input · $15 / 1M Output"},
+				{"model_uid": "gpt-6-sol-max-thinking", "label": "GPT-6 Sol Max Thinking", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$4 / 1M Input · $0.4 / 1M Cached input · $20 / 1M Output"}
+			]
+		},
+		{
+			"family_label": "Claude Opus 5",
+			"family_uid": "claude-opus-5",
+			"slug": "claude-opus-5",
+			"aliases": [],
+			"variants": [
+				{"model_uid": "opus-5", "label": "Claude Opus 5 High", "max_context_tokens": 1000000, "cost_tier": "High cost", "cost_summary": "$10 / 1M Input · $0.25 / 1M Cached input · $50 / 1M Output"},
+				{"model_uid": "opus-5-low", "label": "Claude Opus 5 Low", "max_context_tokens": 1000000, "cost_tier": "High cost", "cost_summary": "$6 / 1M Input · $0.15 / 1M Cached input · $30 / 1M Output"},
+				{"model_uid": "opus-5-medium", "label": "Claude Opus 5 Medium", "max_context_tokens": 1000000, "cost_tier": "High cost", "cost_summary": "$8 / 1M Input · $0.2 / 1M Cached input · $40 / 1M Output"},
+				{"model_uid": "opus-5-xhigh", "label": "Claude Opus 5 XHigh", "max_context_tokens": 1000000, "cost_tier": "High cost", "cost_summary": "$14 / 1M Input · $0.35 / 1M Cached input · $70 / 1M Output"},
+				{"model_uid": "opus-5-max", "label": "Claude Opus 5 Max", "max_context_tokens": 1000000, "cost_tier": "High cost", "cost_summary": "$18 / 1M Input · $0.45 / 1M Cached input · $90 / 1M Output"}
+			]
+		},
+		{
+			"family_label": "Claude Sonnet 5",
+			"family_uid": "claude-sonnet-5",
+			"slug": "claude-sonnet-5",
+			"aliases": [],
+			"variants": [
+				{"model_uid": "sonnet-5", "label": "Claude Sonnet 5 High", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$3 / 1M Input · $0.3 / 1M Cached input · $15 / 1M Output"},
+				{"model_uid": "sonnet-5-medium", "label": "Claude Sonnet 5 Medium", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$2.5 / 1M Input · $0.25 / 1M Cached input · $12 / 1M Output"}
+			]
+		},
+		{
+			"family_label": "Claude Haiku 5",
+			"family_uid": "claude-haiku-5",
+			"slug": "claude-haiku-5",
+			"aliases": [],
+			"variants": [
+				{"model_uid": "haiku-5", "label": "Claude Haiku 5 High", "max_context_tokens": 300000, "cost_tier": "Low cost", "cost_summary": "$0.8 / 1M Input · $0.08 / 1M Cached input · $4 / 1M Output"},
+				{"model_uid": "haiku-5-medium", "label": "Claude Haiku 5 Medium", "max_context_tokens": 300000, "cost_tier": "Low cost", "cost_summary": "$0.6 / 1M Input · $0.06 / 1M Cached input · $3 / 1M Output"}
+			]
+		},
+		{
+			"family_label": "GPT-5.4",
+			"family_uid": "gpt-5-4",
+			"slug": "gpt-5-4",
+			"aliases": [],
+			"variants": [
+				{"model_uid": "gpt-5.4", "label": "GPT-5.4 High", "max_context_tokens": 500000, "cost_tier": "Med cost", "cost_summary": "$1.5 / 1M Input · $0.15 / 1M Cached input · $7.5 / 1M Output"},
+				{"model_uid": "gpt-5.4-medium", "label": "GPT-5.4 Medium", "max_context_tokens": 500000, "cost_tier": "Med cost", "cost_summary": "$1.2 / 1M Input · $0.12 / 1M Cached input · $6 / 1M Output"},
+				{"model_uid": "gpt-5.4-max", "label": "GPT-5.4 Max", "max_context_tokens": 500000, "cost_tier": "Med cost", "cost_summary": "$2 / 1M Input · $0.2 / 1M Cached input · $10 / 1M Output"},
+				{"model_uid": "gpt-5.4-high-fast", "label": "GPT-5.4 High Fast", "max_context_tokens": 500000, "cost_tier": "Med cost", "cost_summary": "$1.5 / 1M Input · $0.15 / 1M Cached input · $7.5 / 1M Output"},
+				{"model_uid": "gpt-5.4-max-fast", "label": "GPT-5.4 Max Fast", "max_context_tokens": 500000, "cost_tier": "Med cost", "cost_summary": "$2 / 1M Input · $0.2 / 1M Cached input · $10 / 1M Output"},
+				{"model_uid": "gpt-5.4-high-1m", "label": "GPT-5.4 High 1M", "max_context_tokens": 500000, "cost_tier": "Med cost", "cost_summary": "$1.5 / 1M Input · $0.15 / 1M Cached input · $7.5 / 1M Output"}
+			]
+		},
+		{
+			"family_label": "Gemini 4",
+			"family_uid": "gemini-4",
+			"slug": "gemini-4",
+			"aliases": [],
+			"variants": [
+				{"model_uid": "gemini-4", "label": "Gemini 4", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$1.25 / 1M Input · $0.12 / 1M Cached input · $6 / 1M Output", "is_beta": true}
 			]
 		},
 		{
@@ -31,11 +109,11 @@
 			"slug": "fusion",
 			"aliases": [],
 			"variants": [
-				{"model_uid": "fusion-claude-opus-5-5-high-sidekick-swe-2-medium", "label": "Fusion (Claude Opus 5.5 High + SWE-2 Medium)", "max_context_tokens": 1000000, "cost_tier": "High cost", "cost_summary": "$4 / 1M Input · $0.2 / 1M Cached input · $20 / 1M Output · Sidekick: Free", "is_new": false, "is_beta": false},
-				{"model_uid": "fusion-claude-opus-5-5-high-sidekick-swe-2-high", "label": "Fusion (Claude Opus 5.5 High + SWE-2 High)", "max_context_tokens": 1000000, "cost_tier": "High cost", "cost_summary": "$4 / 1M Input · $0.2 / 1M Cached input · $20 / 1M Output · Sidekick: Free", "is_new": false, "is_beta": false},
-				{"model_uid": "fusion-claude-opus-5-5-high-sidekick-gpt-5-6-luna-high-thinking", "label": "Fusion (Claude Opus 5.5 High + GPT-5.6 Luna High Thinking)", "max_context_tokens": 1000000, "cost_tier": "High cost", "cost_summary": "$5 / 1M Input · $0.4 / 1M Cached input · $25 / 1M Output", "is_new": false, "is_beta": false},
-				{"model_uid": "fusion-gpt-6-sol-high-thinking-sidekick-swe-2-medium", "label": "Fusion (GPT-6 Sol High Thinking + SWE-2 Medium)", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$2 / 1M Input · $0.2 / 1M Cached input · $10 / 1M Output · Sidekick: Free", "is_new": true, "is_beta": false},
-				{"model_uid": "fusion-gpt-6-sol-high-thinking-sidekick-swe-2-high", "label": "Fusion (GPT-6 Sol High Thinking + SWE-2 High)", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$2 / 1M Input · $0.2 / 1M Cached input · $10 / 1M Output · Sidekick: Free", "is_new": true, "is_beta": false}
+				{"model_uid": "fusion-claude-opus-5-5-high-sidekick-swe-2-medium", "label": "Fusion (Claude Opus 5.5 High + SWE-2 Medium)", "max_context_tokens": 1000000, "cost_tier": "High cost", "cost_summary": "$4 / 1M Input · $0.2 / 1M Cached input · $20 / 1M Output · Sidekick: Free"},
+				{"model_uid": "fusion-claude-opus-5-5-high-sidekick-swe-2-high", "label": "Fusion (Claude Opus 5.5 High + SWE-2 High)", "max_context_tokens": 1000000, "cost_tier": "High cost", "cost_summary": "$4 / 1M Input · $0.2 / 1M Cached input · $20 / 1M Output · Sidekick: Free"},
+				{"model_uid": "fusion-claude-opus-5-5-high-sidekick-gpt-5-6-luna-high-thinking", "label": "Fusion (Claude Opus 5.5 High + GPT-5.6 Luna High Thinking)", "max_context_tokens": 1000000, "cost_tier": "High cost", "cost_summary": "$5 / 1M Input · $0.4 / 1M Cached input · $25 / 1M Output"},
+				{"model_uid": "fusion-gpt-6-sol-high-thinking-sidekick-swe-2-medium", "label": "Fusion (GPT-6 Sol High Thinking + SWE-2 Medium)", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$2 / 1M Input · $0.2 / 1M Cached input · $10 / 1M Output · Sidekick: Free"},
+				{"model_uid": "fusion-gpt-6-sol-high-thinking-sidekick-swe-2-high", "label": "Fusion (GPT-6 Sol High Thinking + SWE-2 High)", "max_context_tokens": 1000000, "cost_tier": "Med cost", "cost_summary": "$2 / 1M Input · $0.2 / 1M Cached input · $10 / 1M Output · Sidekick: Free"}
 			]
 		}
 	]

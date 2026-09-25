@@ -24,7 +24,7 @@ import {
 import {Line, useTick} from './Line.js';
 import {homeLines} from './home.js';
 import {contentWidth, sessionLines} from './session.js';
-import {loadCatalog, type CatalogState} from '../catalog.js';
+import {levelRank, loadCatalog, type CatalogState} from '../catalog.js';
 import {
 	asImage,
 	buildBlocks,
@@ -55,6 +55,8 @@ import {
 	filterResume,
 	filteredOptions,
 	fusionData,
+	rowLevelIdx,
+	rowLevels,
 	sortSessions,
 	type FusionView,
 	type PickerView,
@@ -183,6 +185,8 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	pickerRef.current = picker;
 	const fusionRef = useRef<FusionView | null>(fusion);
 	fusionRef.current = fusion;
+	const catalogRef = useRef<CatalogState>(catalog);
+	catalogRef.current = catalog;
 	const resumeRef = useRef<ResumeView | null>(resumeView);
 	resumeRef.current = resumeView;
 	/** -c/-r session-load intent; survives the auth detour */
@@ -581,46 +585,88 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			return;
 		}
 		const effortOpt = findConfigOption(s, 'thought_level');
-		const evals = effortOpt ? configValues(effortOpt) : [];
 		const opts = configValues(modelOpt);
 		setPicker({
 			sel: Math.max(0, opts.findIndex(o => o.value === modelOpt.currentValue)),
 			filter: '',
-			effortIdx: Math.max(
-				0,
-				evals.findIndex(o => o.value === effortOpt?.currentValue),
-			),
+			effort:
+				effortOpt?.currentValue !== undefined
+					? {[String(modelOpt.currentValue)]: String(effortOpt.currentValue)}
+					: {},
 		});
 	}, [flash]);
 
-	/** Picker Enter — push model then thought_level via set_config_option. */
+	/** Picker Enter — push model then thought_level via set_config_option.
+	 *  The level is resolved against the thought_level option RETURNED by
+	 *  the model switch (real Devin swaps the list per model) — exact value
+	 *  match, then name match, then nearest rank; no match → no call. */
 	const applyPicker = useCallback(async () => {
 		const s = stateRef.current;
 		const p = pickerRef.current;
 		const conn = connRef.current;
 		const modelOpt = findConfigOption(s, 'model');
-		const effortOpt = findConfigOption(s, 'thought_level');
 		if (!conn || !p || !modelOpt) {
 			setPicker(null);
 			return;
 		}
+		const effortOpt = findConfigOption(s, 'thought_level');
+		const cat = catalogRef.current;
 		const filtered = filteredOptions(modelOpt, p.filter);
 		const chosen = filtered[Math.min(p.sel, Math.max(0, filtered.length - 1))];
-		const evals = effortOpt ? configValues(effortOpt) : [];
-		const effortVal = evals[Math.min(p.effortIdx, Math.max(0, evals.length - 1))];
+		const lvls = chosen
+			? rowLevels(chosen, modelOpt, effortOpt, cat)
+			: [];
+		const li = chosen
+			? rowLevelIdx(lvls, p, chosen, modelOpt, effortOpt, cat)
+			: -1;
+		const target = li >= 0 ? lvls[li] : undefined;
 		setPicker(null);
 		try {
+			let returned;
 			if (chosen && chosen.value !== modelOpt.currentValue) {
-				const opts = await conn.setConfigOption(modelOpt.id, chosen.value);
-				if (opts) dispatch({type: 'configOptions', options: opts});
+				returned = await conn.setConfigOption(modelOpt.id, chosen.value);
+				if (returned) dispatch({type: 'configOptions', options: returned});
 			}
-			if (
-				effortOpt &&
-				effortVal &&
-				effortVal.value !== effortOpt.currentValue
-			) {
-				const opts = await conn.setConfigOption(effortOpt.id, effortVal.value);
-				if (opts) dispatch({type: 'configOptions', options: opts});
+			if (target) {
+				// the thought_level option from the model switch's response —
+				// fall back to the live state only when none came back
+				const eOpt =
+					(returned ?? s.configOptions).find(
+						o =>
+							o.type === 'select' &&
+							(o.category === 'thought_level' || o.id === 'thought_level'),
+					) ?? effortOpt;
+				const vals = eOpt ? configValues(eOpt) : [];
+				let val =
+					vals.find(
+						v => v.value.toLowerCase() === target.id.toLowerCase(),
+					) ??
+					vals.find(
+						v => v.name.toLowerCase() === target.name.toLowerCase(),
+					);
+				if (!val) {
+					const tr = levelRank(target.name);
+					if (tr >= 0) {
+						for (const v of vals) {
+							const vr = levelRank(v.name);
+							if (
+								vr >= 0 &&
+								(!val ||
+									Math.abs(vr - tr) <
+										Math.abs(levelRank(val.name) - tr))
+							)
+								val = v;
+						}
+					}
+				}
+				if (
+					eOpt &&
+					val &&
+					val.value !== eOpt.currentValue
+				) {
+					const opts = await conn.setConfigOption(eOpt.id, val.value);
+					if (opts) dispatch({type: 'configOptions', options: opts});
+				}
 			}
 		} catch (e) {
 			dispatch({type: 'systemMsg', text: `set_config_option: ${errMsg(e)}`});
@@ -1130,7 +1176,6 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			const filtered = modelOpt
 				? filteredOptions(modelOpt, pk.filter)
 				: [];
-			const evals = effortOpt ? configValues(effortOpt) : [];
 			const n = Math.max(1, filtered.length);
 			if (key.escape) {
 				setPicker(null);
@@ -1138,10 +1183,33 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				setPicker({...pk, sel: (pk.sel - 1 + n) % n});
 			} else if (key.downArrow) {
 				setPicker({...pk, sel: (pk.sel + 1) % n});
-			} else if (key.leftArrow && evals.length > 0) {
-				setPicker({...pk, effortIdx: Math.max(0, pk.effortIdx - 1)});
-			} else if (key.rightArrow && evals.length > 0) {
-				setPicker({...pk, effortIdx: Math.min(evals.length - 1, pk.effortIdx + 1)});
+			} else if (key.leftArrow || key.rightArrow) {
+				// ←/→ step the level of the SELECTED row's own list
+				const opt = modelOpt
+					? filtered[Math.min(pk.sel, filtered.length - 1)]
+					: undefined;
+				const lvls =
+					opt && modelOpt
+						? rowLevels(opt, modelOpt, effortOpt, catalogRef.current)
+						: [];
+				if (opt && modelOpt && lvls.length > 0) {
+					const cur = rowLevelIdx(
+						lvls,
+						pk,
+						opt,
+						modelOpt,
+						effortOpt,
+						catalogRef.current,
+					);
+					const next = Math.max(
+						0,
+						Math.min(lvls.length - 1, cur + (key.rightArrow ? 1 : -1)),
+					);
+					setPicker({
+						...pk,
+						effort: {...pk.effort, [opt.value]: lvls[next].id},
+					});
+				}
 			} else if (key.return) {
 				void applyPicker();
 			} else if (key.backspace || key.delete) {

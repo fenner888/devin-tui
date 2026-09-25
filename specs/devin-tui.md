@@ -197,27 +197,69 @@ as the slash dropdown, not a centered overlay):
   headers. Max 8 visible rows with `↑ n more above` / `↓ n more below`
   markers. The ` / type to search` row filters by case-insensitive
   substring; typing edits the filter, backspace deletes.
-- Selected row: `❯` + name in picker blue on the `pkSel` background; the
-  effort control shows only on that row — dim `←`/`→` around one `■` per
-  `thought_level` option (filled to the pending choice in blue, unfilled
-  `pkOff`) + the effort label in blue. ←/→ adjust the pending effort. With
-  no `thought_level` option the control and the `←→` hint are omitted.
+- **Per-model reasoning levels.** Real Devin's `thought_level` values
+  change with the applied model (`swe-2-high` → medium/high/max,
+  Fable-like → low/medium/high/xhigh/max, Adaptive → none). Each picker
+  row therefore carries its own level list and its own pending level:
+  `PickerView.effort` maps model value → chosen normalized level id,
+  seeded on open as `{[currentModel]: thought_level.currentValue}`.
+  - A row's list (`rowLevels`): for the applied model's row the live
+    ACP `thought_level` values are authoritative; for every other row
+    `levelsFor(catalog, uid)` derives levels from the catalog family —
+    sibling variants with the same `mods` key and a recognized level,
+    deduped and rank-sorted (`None`0 < `Low`1 < `Medium`2 < `High`3 <
+    `XHigh`4 < `Max`5; `levelRank` maps names/ids). `levelsFor` returns
+    `[]` for fusion families, unknown uids and families with <2 levels
+    (e.g. Adaptive) — those rows show no control.
+  - A row's selected level (`rowLevelIdx`): the pending pick in
+    `effort[uid]`, else the live `thought_level.currentValue` on the
+    applied row, else the catalog entry's own `level`; an id missing
+    from that row's list resolves to the nearest level by rank
+    (unranked → last entry).
+  - Rendering: every leveled row shows the control — selected row
+    `← ` + `■`-per-level (filled blue `pk`, unfilled `pkOff`) + ` →  ` +
+    name in blue on `pkSel`; other rows `  ` + bars (`muted`/`faint`) +
+    `    ` + `muted` name. The control column is right-aligned and fixed
+    to the widest control in the visible window so bars and names line
+    up in columns; when a non-selected row's name + badge + control
+    don't fit, the control drops (the name wins) while the selected row
+    truncates its name instead.
+  - Keys: ←/→ step within the SELECTED row's own list (clamped) and
+    write `effort[opt.value]`; the footer's `←→ reasoning effort` hint
+    shows only when the selected row has levels. Works with filter text
+    and from the home screen too.
 - Non-selected rows: name in `text`, the current model marked `•` faint.
 - Footer: `↑↓ select · ←→ reasoning effort · ↵ confirm · esc cancel`.
-- Enter applies: `session/set_config_option` for the model if changed,
-  then for `thought_level` if changed; errors surface as a system line.
-  Esc closes without changes. Opening while `working` is blocked by the
-  existing `agent is working` notice.
+- Enter applies: `session/set_config_option` for the model if changed —
+  the RETURNED config options then provide the `thought_level` option
+  (falling back to the live state's option only when the response
+  carries none). The chosen level resolves against that new list by
+  exact value (case-insensitive) → name match → nearest `levelRank` →
+  no call; a resolved value ≠ the option's current is sent as
+  `set_config_option thought_level`. This ordering is what makes a
+  model switch land on the right level — resolving against the OLD
+  list mapped the index onto the wrong value. Errors surface as a
+  system line. Esc closes without changes. Opening while `working` is
+  blocked by the existing `agent is working` notice.
 
 ### Catalog pricing + badges (`src/catalog.ts`)
 
 - The catalog loads once at startup (non-blocking): `DEVIN_TUI_MODELS_FILE`
-  (test override, read directly) → `devin models list --format json`
+  (test override, read directly — `test/models-fixture.json` holds
+  per-model families whose variant labels exercise every suffix shape:
+  plain levels, `Thinking`, `No Thinking`, `Fast`, `1M`, a
+  single-variant Adaptive-like family, and Fusion pairs) →
+  `devin models list --format json`
   (execFile, no shell, 20s timeout; a successful payload is written to the
   persistent cache `~/.cache/devin-tui/models.json`) → that cache →
   unavailable. Indexed by `model_uid` → label, `costTier`, parsed
   `prices` (input/cached/output, tolerant `$<n> / 1M <label>` regex),
-  `isNew`, `isBeta`, `maxContext`. When unavailable the picker renders
+  `isNew`, `isBeta`, `maxContext` — plus, for per-model reasoning
+  levels, `family` (`family_uid`), `familyLabel`, `level` and `mods`
+  normalized from the label suffix (`label` minus the family_label
+  prefix: `Fast`/`1M` tokens and the word `Thinking` are stripped into
+  a sorted `mods` key like `'fast'`/`'1m'`, `No` → `None`, empty or
+  unrecognized → no level). When unavailable the picker renders
   exactly as before plus one faint footer line `prices unavailable — log
   in the Devin CLI (devin auth login) to load them`.
 - Badge column after the name: `✱` `pkGreen` for `is_new`, `✱` `pkYellow`
@@ -625,9 +667,13 @@ state to `needsAuth`.
   (-32000 pre-auth, re-armed after `logout`), ~1s authenticate, modes
   (normal/plan/accept-edits), `configOptions` on `session/new` (mode
   select, a 10-model select in two groups plus a 5-pair Fusion group —
-  2 leads × 3 sidekicks, one pair missing — thought_level
-  low/medium/high/max — a shorter list for `opus-5`;
-  `DEVIN_TUI_FAKE_EFFORTS="medium,high,max"` restricts the effort list
+  2 leads × 3 sidekicks, one pair missing — a PER-MODEL `thought_level`
+  list mirroring real Devin (`swe-2`/`gpt-5.4` → medium/high/max,
+  `gpt-6-sol` → low/medium/high/max, `swe-1.6` → high/max, `opus-5` →
+  low/medium/high/xhigh/max Fable-like, `sonnet-5`/`haiku-5` →
+  medium/high, `swe-1.5`/`inkling`/fusion → low/medium/high/max,
+  `gemini-4` → no thought_level option at all, Adaptive-like;
+  `DEVIN_TUI_FAKE_EFFORTS="medium,high,max"` restricts the list
   to a real-Devin-shaped 3 values),
   `session/set_config_option` (stderr log + `config_option_update`
   push), `logout`, `_cognition.ai/output` notifications, slash commands

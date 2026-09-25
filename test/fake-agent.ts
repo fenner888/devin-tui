@@ -77,9 +77,50 @@ let currentModel = 'swe-2';
 let currentEffort = 'max';
 let currentMode = 'normal';
 
+// per-model reasoning levels — like real Devin, the thought_level list
+// changes with the applied model (e.g. swe-2 → medium/high/max,
+// Fable-like → low/…/xhigh/max, gemini-4 → none at all)
+const EFFORT_BY_MODEL: Record<string, {value: string; name: string}[]> = {
+	'gpt-6-sol': [
+		{value: 'low', name: 'Low'},
+		{value: 'medium', name: 'Medium'},
+		{value: 'high', name: 'High'},
+		{value: 'max', name: 'Max'},
+	],
+	'swe-2': [
+		{value: 'medium', name: 'Medium'},
+		{value: 'high', name: 'High'},
+		{value: 'max', name: 'Max'},
+	],
+	'swe-1.6': [
+		{value: 'high', name: 'High'},
+		{value: 'max', name: 'Max'},
+	],
+	'opus-5': [
+		{value: 'low', name: 'Low'},
+		{value: 'medium', name: 'Medium'},
+		{value: 'high', name: 'High'},
+		{value: 'xhigh', name: 'XHigh'},
+		{value: 'max', name: 'Max'},
+	],
+	'sonnet-5': [
+		{value: 'medium', name: 'Medium'},
+		{value: 'high', name: 'High'},
+	],
+	'haiku-5': [
+		{value: 'medium', name: 'Medium'},
+		{value: 'high', name: 'High'},
+	],
+	'gpt-5.4': [
+		{value: 'medium', name: 'Medium'},
+		{value: 'high', name: 'High'},
+		{value: 'max', name: 'Max'},
+	],
+	'gemini-4': [], // Adaptive-like — no thought_level option at all
+};
+
 function effortOptions(model: string) {
-	// Claude Opus 5 caps at 'high' — a different effort list for one model
-	let all = [
+	let all = EFFORT_BY_MODEL[model] ?? [
 		{value: 'low', name: 'Low'},
 		{value: 'medium', name: 'Medium'},
 		{value: 'high', name: 'High'},
@@ -88,7 +129,7 @@ function effortOptions(model: string) {
 	// test override: DEVIN_TUI_FAKE_EFFORTS="medium,high,max" restricts the list
 	const only = process.env.DEVIN_TUI_FAKE_EFFORTS?.split(',').filter(Boolean);
 	if (only?.length) all = all.filter(e => only.includes(e.value));
-	return model === 'opus-5' ? all.filter(e => e.value !== 'max') : all;
+	return all;
 }
 
 function buildConfig(): SessionConfigOption[] {
@@ -161,14 +202,19 @@ function buildConfig(): SessionConfigOption[] {
 				},
 			],
 		},
-		{
-			id: 'thought_level',
-			name: 'Reasoning effort',
-			type: 'select',
-			category: 'thought_level',
-			currentValue: currentEffort,
-			options: efforts,
-		},
+		// Adaptive-like models expose no reasoning control at all
+		...(efforts.length > 0
+			? [
+					{
+						id: 'thought_level',
+						name: 'Reasoning effort',
+						type: 'select',
+						category: 'thought_level',
+						currentValue: currentEffort,
+						options: efforts,
+					} satisfies SessionConfigOption,
+				]
+			: []),
 	];
 }
 

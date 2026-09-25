@@ -474,6 +474,54 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # per-model reasoning levels (DEVIN_TUI_MODELS_FILE=fixture):
+    # open -> per-row bars/names with different counts (levels-open.png)
+    # -> filter 'opus' + -> XHigh on the Fable-like row (levels-xhigh.png)
+    # -> Enter applies model=opus-5 THEN thought_level=xhigh (log order)
+    # -> GPT-6 Sol row -> None (catalog has it, ACP list doesn't) ->
+    #    Enter resolves nearest -> thought_level=low (levels-none.png)
+    # -> Gemini 4 (Adaptive-like) row has no control (levels-adaptive.png)
+    # -> Enter sends model only, no thought_level
+    "levels": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"/model"),
+        (0.3, b"\r"),             # picker open, sel = SWE-2 (current)
+        (1.5, b""),               # levels-open frame
+        (0.5, b"opus"),           # filter -> Claude Opus 5 first
+        (0.6, b"\x1b[C"),         # -> XHigh (4/5 bars)
+        (1.0, b""),               # levels-xhigh frame
+        (0.3, b"\r"),             # apply: model=opus-5, thought_level=xhigh
+        (2.0, b""),
+        (0.5, b"/model"),
+        (0.3, b"\r"),             # reopen (current = Claude Opus 5)
+        (0.5, b"sol"),            # filter -> GPT-6 Sol first
+        (0.4, b"\x1b[D"),         # Medium -> Low
+        (0.2, b"\x1b[D"),         # Low -> None
+        (0.8, b""),               # levels-none frame
+        (0.3, b"\r"),             # apply: model=gpt-6-sol, nearest -> low
+        (2.0, b""),
+        (0.5, b"/model"),
+        (0.3, b"\r"),
+        (0.5, b"gemini"),         # Adaptive-like row — no control
+        (0.8, b""),               # levels-adaptive frame
+        (0.3, b"\r"),             # apply: model=gemini-4, no thought_level
+        (2.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # per-row levels at 80x24 — list/detail shedding keeps everything in
+    # bounds with the composer intact (levels-80.png)
+    "levels80": [
+        (6.0, b"\r"),
+        (2.5, b"/model"),
+        (0.3, b"\r"),
+        (2.5, b""),               # levels-80 frame
+        (0.5, ESC),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # no-truecolor run ending on the model picker (inverse + ANSI fallback)
     "fallback": [
         (6.0, b"\r"),             # needsAuth menu -> auth

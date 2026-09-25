@@ -1,5 +1,6 @@
 import type {SessionConfigOption, SessionInfo} from '@agentclientprotocol/sdk';
 import {configGroups, configValues} from '../state/store.js';
+import {levelRank, levelsFor} from '../catalog.js';
 import type {CatalogState, ModelCatalog} from '../catalog.js';
 import type {Token} from '../theme.js';
 import {padSegs, seg, segsWidth, strWidth, truncSegs, type Seg} from './lines.js';
@@ -14,7 +15,8 @@ import {shortCwd} from './panel.js';
 export interface PickerView {
 	sel: number; // index into the filtered option list
 	filter: string;
-	effortIdx: number; // pending thought_level index
+	/** pending reasoning-level id per model value (each row keeps its own) */
+	effort: Record<string, string>;
 }
 
 interface Flat {
@@ -48,8 +50,11 @@ interface ShellSpec {
 	sel: number;
 	/** mark a row `•` (the currently applied value) */
 	isCurrent?: (o: Flat) => boolean;
-	/** right-side control on the selected row (effort bars / sidekick cycler) */
-	control?: (o: Flat, bg: 'pkSel' | 'overlay') => Seg[];
+	/** right-side control per row (effort bars / sidekick cycler); called
+	 *  for every visible row — return [] for none. Controls render in a
+	 *  fixed-width column (the widest control over the visible window),
+	 *  padded on the right so bars/names align in columns */
+	control?: (o: Flat, isSel: boolean, bg: 'pkSel' | 'overlay') => Seg[];
 	/** right-aligned meta on every row (e.g. resume picker's time + id) */
 	rowMeta?: (o: Flat, bg: 'pkSel' | 'overlay') => Seg[];
 	/** ✱ badge token after the name ('pkGreen' new / 'pkYellow' beta) */
@@ -107,6 +112,20 @@ function pickerShell(spec: ShellSpec): Seg[][] {
 			Math.max(20, w - 30),
 			Math.max(0, ...window_.map(r => ('header' in r ? 0 : strWidth(r.opt.name)))),
 		);
+		// controls land in a fixed-width column (the widest in the window)
+		// so bars/names line up across rows; [] → the row gets none
+		rcMap = new Map();
+		rcW = 0;
+		for (const r of window_) {
+			if ('header' in r) continue;
+			const isSel = r.idx === sel;
+			const rc =
+				spec.control?.(r.opt, isSel, isSel ? 'pkSel' : 'overlay') ?? [];
+			if (rc.length > 0) {
+				rcMap.set(r.idx, rc);
+				rcW = Math.max(rcW, segsWidth(rc));
+			}
+		}
 		for (const r of window_) rows.push(optionRow(r));
 		if (below > 0) {
 			rows.push(
@@ -121,6 +140,8 @@ function pickerShell(spec: ShellSpec): Seg[][] {
 	};
 
 	let badgeCol = 0;
+	let rcMap: Map<number, Seg[]> = new Map();
+	let rcW = 0;
 	const optionRow = (r: Row): Seg[] => {
 		if ('header' in r) {
 			return padSegs([seg(`   ${r.header}`, 'faint', 'overlay')], w, 'overlay');
@@ -139,7 +160,7 @@ function pickerShell(spec: ShellSpec): Seg[][] {
 		const metaW = meta.reduce((a, s) => a + strWidth(s.t), 0);
 		if (isSel) {
 			const ctl = [
-				...(spec.control?.(r.opt, 'pkSel') ?? []),
+				...padSegs(rcMap.get(r.idx) ?? [], rcW, 'pkSel'),
 				...meta,
 			];
 			const ctlW = ctl.reduce((a, s) => a + strWidth(s.t), 0);
@@ -161,22 +182,33 @@ function pickerShell(spec: ShellSpec): Seg[][] {
 				'pkSel',
 			);
 		}
+		const ctl = padSegs(rcMap.get(r.idx) ?? [], rcW, 'overlay');
+		const rightW = segsWidth(ctl) + metaW;
 		const nameSegs = [
 			seg('   ', 'plain', 'overlay'),
 			seg(r.opt.name, 'text', 'overlay'),
 			...badgeSegs,
 			...(isCurrent ? [seg(' •', 'faint', 'overlay')] : []),
 		];
-		if (meta.length === 0) {
+		const nameW = nameSegs.reduce((a, s) => a + strWidth(s.t), 0);
+		// under width pressure the right-side control/meta drops before
+		// the row's name does (the selected row keeps its control instead
+		// and truncates the name — above)
+		if (rightW === 0) {
 			return padSegs(truncSegs(nameSegs, w), w, 'overlay');
 		}
-		const gap = Math.max(
-			1,
-			w - 4 - nameSegs.reduce((a, s) => a + strWidth(s.t), 0) - metaW,
-		);
+		if (nameW + 1 + rightW + 4 > w) {
+			return padSegs(truncSegs(nameSegs, w), w, 'overlay');
+		}
+		const gap = Math.max(1, w - 1 - nameW - rightW);
 		return padSegs(
 			truncSegs(
-				[...nameSegs, seg(' '.repeat(gap), 'plain', 'overlay'), ...meta],
+				[
+					...nameSegs,
+					seg(' '.repeat(gap), 'plain', 'overlay'),
+					...ctl,
+					...meta,
+				],
 				w,
 			),
 			w,
@@ -414,6 +446,72 @@ function pricingDetail(
 
 // ---- /model picker ---------------------------------------------------------
 
+export interface LevelOpt {
+	id: string; // normalized lowercase level id ('high', 'xhigh', …)
+	name: string; // display name ('High', 'XHigh', …)
+}
+
+/** The reasoning levels available on one model row. The applied model's
+ *  row uses the ACP `thought_level` values (authoritative — real Devin
+ *  changes them per model); every other row derives its list from the
+ *  catalog's family variants (`levelsFor`). [] → no control. */
+export function rowLevels(
+	o: {value: string},
+	modelOpt: SessionConfigOption,
+	effortOpt: SessionConfigOption | undefined,
+	catalog: CatalogState,
+): LevelOpt[] {
+	if (o.value === modelOpt.currentValue && effortOpt) {
+		return configValues(effortOpt).map(v => ({
+			id: v.value,
+			name: v.name,
+		}));
+	}
+	if (catalog.status === 'ready') return levelsFor(catalog.catalog, o.value);
+	return [];
+}
+
+/** The selected level index for a row: the pending pick in
+ *  `view.effort`, else the applied model's live value (current row) or
+ *  the catalog entry's own level. When that id isn't in the row's list
+ *  the nearest level by rank wins; unranked → the last entry. */
+export function rowLevelIdx(
+	levels: LevelOpt[],
+	view: PickerView,
+	o: {value: string},
+	modelOpt: SessionConfigOption,
+	effortOpt: SessionConfigOption | undefined,
+	catalog: CatalogState,
+): number {
+	if (levels.length === 0) return -1;
+	const isCurrent = o.value === modelOpt.currentValue;
+	const want =
+		view.effort[o.value] ??
+		(isCurrent
+			? effortOpt?.currentValue !== undefined
+				? String(effortOpt.currentValue)
+				: undefined
+			: catalog.status === 'ready'
+				? catalog.catalog.get(o.value)?.level?.toLowerCase()
+				: undefined);
+	const exact = levels.findIndex(l => l.id === want);
+	if (exact >= 0) return exact;
+	const wantRank = want !== undefined ? levelRank(want) : -1;
+	if (wantRank >= 0) {
+		let best = -1;
+		for (let i = 0; i < levels.length; i++) {
+			if (
+				best === -1 ||
+				Math.abs(levelRank(levels[i].name) - wantRank) <
+					Math.abs(levelRank(levels[best].name) - wantRank)
+			)
+				best = i;
+		}
+		if (best >= 0) return best;
+	}
+	return levels.length - 1;
+}
+
 export function pickerLines(
 	modelOpt: SessionConfigOption,
 	effortOpt: SessionConfigOption | undefined,
@@ -425,6 +523,7 @@ export function pickerLines(
 	const groups = configGroups(modelOpt);
 	const filtered = filteredOptions(modelOpt, view.filter);
 	const sel = Math.min(view.sel, Math.max(0, filtered.length - 1));
+	const selOpt = filtered[sel];
 	const allUids = configValues(modelOpt).map(o => o.value);
 
 	// display rows: group headers only when not filtering
@@ -439,8 +538,16 @@ export function pickerLines(
 		display = filtered.map((o, i) => ({opt: o, idx: i}));
 	}
 
-	const effortVals = effortOpt ? configValues(effortOpt) : [];
-	const effortIdx = Math.min(view.effortIdx, Math.max(0, effortVals.length - 1));
+	const lvlOf = (o: {value: string}) =>
+		rowLevels(o, modelOpt, effortOpt, catalog);
+	const idxOf = (o: {value: string}, lvls: LevelOpt[]) =>
+		rowLevelIdx(lvls, view, o, modelOpt, effortOpt, catalog);
+	const selLvls = selOpt ? lvlOf(selOpt) : [];
+	// bars pad to the widest row so level names line up in one column
+	const maxBars = Math.max(
+		0,
+		...display.map(r => ('opt' in r ? lvlOf(r.opt).length : 0)),
+	);
 
 	return pickerShell({
 		filter: view.filter,
@@ -451,18 +558,33 @@ export function pickerLines(
 			catalog.status === 'ready' ? badgeFor(catalog.catalog, o.value) : null,
 		detail: o => pricingDetail(o?.value, allUids, catalog),
 		maxRows,
-		control: (_o, bg) =>
-			effortVals.length === 0
-				? []
-				: [
+		control: (o, isSel, bg) => {
+			const lvls = lvlOf(o);
+			if (lvls.length === 0) return [];
+			const i = Math.max(0, idxOf(o, lvls));
+			const pad = seg(' '.repeat(maxBars - lvls.length), 'plain', bg);
+			return isSel
+				? [
 						seg('← ', 'pkDim', bg),
-						...effortVals.map((_, i) =>
-							seg('■', i <= effortIdx ? 'pk' : 'pkOff', bg),
+						...lvls.map((_, j) =>
+							seg('■', j <= i ? 'pk' : 'pkOff', bg),
 						),
-						seg(' →  ', 'pkDim', bg),
-						seg(effortVals[effortIdx]?.name ?? '', 'pk', bg),
-					],
-		midHint: effortVals.length > 0 ? 'reasoning effort' : undefined,
+						seg(' →', 'pkDim', bg),
+						pad,
+						seg('  ', 'plain', bg),
+						seg(lvls[i].name, 'pk', bg),
+					]
+				: [
+						seg('  ', 'plain', bg),
+						...lvls.map((_, j) =>
+							seg('■', j <= i ? 'muted' : 'faint', bg),
+						),
+						pad,
+						seg('    ', 'plain', bg),
+						seg(lvls[i].name, 'muted', bg),
+					];
+		},
+		midHint: selLvls.length > 0 ? 'reasoning effort' : undefined,
 		w,
 	});
 }
@@ -556,8 +678,8 @@ export function fusionLines(
 			leads
 				.find(l => l.name === o.value)
 				?.pairs.some(p => p.value === currentValue) ?? false,
-		control: (_o, bg) =>
-			selLead
+		control: (_o, isSel, bg) =>
+			isSel && selLead
 				? [
 						seg('← ', 'pkDim', bg),
 						seg('+ ', 'pkDim', bg),

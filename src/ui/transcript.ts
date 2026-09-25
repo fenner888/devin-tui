@@ -1,3 +1,4 @@
+import {realpathSync} from 'node:fs';
 import {
 	type Seg,
 	seg,
@@ -133,10 +134,28 @@ const TOOL_VERBS: Record<string, [string, string]> = {
 	switch_mode: ['Switching mode', 'Switched mode'],
 };
 
-/** Path relative to the session cwd; ~-collapsed when outside. */
+const realCache = new Map<string, string>();
+function realDir(p: string): string {
+	let r = realCache.get(p);
+	if (r === undefined) {
+		try {
+			r = realpathSync(p);
+		} catch {
+			r = p;
+		}
+		realCache.set(p, r);
+	}
+	return r;
+}
+
+/** Path relative to the session cwd; ~-collapsed when outside. Devin
+ *  reports symlink-resolved paths (macOS /tmp → /private/tmp), so the
+ *  cwd's real path is tried too. */
 function relPath(p: string, cwd: string): string {
-	if (p === cwd) return '.';
-	if (p.startsWith(cwd + '/')) return p.slice(cwd.length + 1);
+	for (const base of new Set([cwd, realDir(cwd)])) {
+		if (p === base) return '.';
+		if (p.startsWith(base + '/')) return p.slice(base.length + 1);
+	}
 	return shortCwd(p);
 }
 

@@ -353,7 +353,8 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   `\x1b]0;devin: <title>\x07` and restored to `devin-tui` on exit.
 - While `working`, Enter queues the typed text (see Queued messages above).
   Slash text goes to the
-  agent verbatim. Local commands: `/quit`, `/clear` (fresh session → back to
+  agent verbatim. Local commands: `/quit` / `/exit` (bare `quit` / `exit`
+  also work, like the Devin CLI), `/clear` (fresh session → back to
   home), `/sidebar` (toggle plan block), `/model` (model picker), `/login`
   (in `needsAuth`: same as picking the first auth method; while signed in:
   re-authenticates with the first method and keeps the session), `/logout`

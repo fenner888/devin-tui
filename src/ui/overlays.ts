@@ -72,6 +72,8 @@ export const LOCAL_RESERVED = new Set([
 	'handoff',
 	'fusion',
 	'help',
+	'exit',
+	'quit',
 ]);
 
 export function agentCommands(s: State) {

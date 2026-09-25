@@ -70,6 +70,7 @@ const LOCAL_COMMANDS: SlashCommand[] = [
 	{name: 'clear', description: 'start a fresh session', local: true},
 	{name: 'sidebar', description: 'toggle the plan block', local: true},
 	{name: 'help', description: 'show commands and keys', local: true},
+	{name: 'exit', description: 'exit devin-tui', local: true},
 	{name: 'quit', description: 'exit devin-tui', local: true},
 ];
 
@@ -551,7 +552,8 @@ export function App({cwd, model, command, onQuit, onConn}: Props): React.JSX.Ele
 				}
 				return;
 			}
-			if (t === '/quit') {
+			// like the Devin CLI: /exit, /quit, or bare `exit` / `quit`
+			if (['/quit', '/exit', 'quit', 'exit'].includes(t.toLowerCase())) {
 				onQuit();
 				return;
 			}

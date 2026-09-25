@@ -160,7 +160,9 @@ A vertically + horizontally centered column:
    `● Tip  <key> <text>` (● / Tip / key bright, rest muted) cycling ~5 tips
    every ~10s.
 6. Corners: bottom-left `~cwd` muted + ` (<branch>)` faint (omitted
-   outside a git repo), bottom-right `v0.1.0` faint.
+   outside a git repo), bottom-right `v0.1.0` faint — inset 2 cols on
+   both sides and placed at `rows-3` (two blank rows below), matching
+   the session status bar's position.
 
 Typing is ignored until the session is ready (`status` idle); in
 `needsAuth` the input panel is replaced by the sign-in menu described in
@@ -443,8 +445,9 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   mode until `sessionReady`, and the model segment only when the model is
   known (config option value, else `--model`; never "default model"). The
   frame's shimmer band runs while `working`.
-- **Status bar** (one blank row under the panel, one blank row after the
-  bar so it doesn't sit on the last terminal row): left
+- **Status bar** (one blank row under the panel, two blank rows after
+  the bar; the bar itself is inset 2 cols on both sides so `⣿` never
+  touches col 1 and the right edge never clips): left
   `⣿ <cwd> (<branch>)  │  <mode name>  │  [<title>  │  ] <model> <effort>`
   — `<cwd>` is `shortCwd(s.cwd)` in `text`, ` (<branch>)` muted is the
   cwd's git branch (`currentBranch()` in handoff.ts — `git rev-parse

@@ -92,7 +92,7 @@ export function sessionLines(
 		marker.length +
 		dropdown.length +
 		(ui.handoff ? handoffBlock(ui.handoff, w).length : 0);
-	const pkMax = Math.max(6, rows - input.length - 6 - otherAux);
+	const pkMax = Math.max(6, rows - input.length - 7 - otherAux);
 	const modelOpt =
 		ui.modelPicker || ui.fusion ? findConfigOption(s, 'model') : undefined;
 	const modelPk =
@@ -134,7 +134,7 @@ export function sessionLines(
 
 	const transH = Math.max(
 		1,
-		rows - input.length - 1 - aux.length - 1 - 2,
+		rows - input.length - 1 - aux.length - 1 - 3,
 	);
 	const all = transcriptLines(s, w, ui.tick, ui.permSel);
 	const end = Math.max(0, all.length - ui.scrollOffset);
@@ -150,10 +150,11 @@ export function sessionLines(
 	for (const l of input) lines.push(frame(l));
 
 	// breathing room: one blank row between the composer and the status
-	// bar, and one below the status bar so it doesn't sit on the last row
+	// bar, and two below the status bar so it doesn't sit near the last row
 	lines.push(blankLine(cols));
 	const elapsed = s.turnStartedAt ? Date.now() - s.turnStartedAt : 0;
 	lines.push(statusBar(s, cols, ui.tick, elapsed));
+	lines.push(blankLine(cols));
 	lines.push(blankLine(cols));
 
 	while (lines.length < rows) lines.unshift(blankLine(cols));

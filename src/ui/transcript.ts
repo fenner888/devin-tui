@@ -992,7 +992,8 @@ export function statusBar(
 
 	let l = [...leftSegs(true, false), ...counters];
 	let r = [...ctx, ...working, ...expandHint, ...hints];
-	const over = () => segsWidth(l) + segsWidth(r) + 3 > cols;
+	// 2-col inset each side + ≥1 gap + 1 slack
+	const over = () => segsWidth(l) + segsWidth(r) + 6 > cols;
 	if (over()) r = [...ctx, ...working, ...hints];
 	if (over()) r = [...ctx, ...working];
 	if (over()) l = leftSegs(true, false);
@@ -1001,6 +1002,9 @@ export function statusBar(
 	if (over()) l = leftSegs(true, false, false);
 	if (over()) l = leftSegs(false, false, false);
 	if (over()) l = leftSegs(false, true, false);
-	const gap = Math.max(1, cols - segsWidth(l) - segsWidth(r) - 1);
-	return padSegs([seg(' '), ...l, seg(' '.repeat(gap)), ...r], cols);
+	const gap = Math.max(1, cols - segsWidth(l) - segsWidth(r) - 4);
+	return padSegs(
+		[seg('  '), ...l, seg(' '.repeat(gap)), ...r, seg('  ')],
+		cols,
+	);
 }

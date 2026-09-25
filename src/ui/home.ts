@@ -150,8 +150,9 @@ export function homeLines(
 		working: s.status === 'working',
 	}, ui.chips);
 	// the picker sheds detail rows to fit between the logo zone and the
-	// composer (see session.ts for the same budgeting)
-	const pkBudget = Math.max(6, rows - input.length - 10);
+	// composer (see session.ts for the same budgeting); the budget also
+	// reserves the 3 bottom rows (corner row + 2 blanks)
+	const pkBudget = Math.max(6, rows - input.length - 12);
 	const pkRows = (() => {
 		if ((!ui.picker && !ui.fusion && !ui.resume) || s.status === 'needsAuth')
 			return [] as Seg[][];
@@ -287,20 +288,26 @@ export function homeLines(
 		...zone,
 	];
 
-	// vertically center the block; if it overflows (e.g. an open slash
-	// dropdown on a short screen) let the top rows (logo/title) slide off
-	// so the composer stays fully visible
-	const top = Math.floor((rows - 1 - block.length) / 2);
+	// vertically center the block above the corner zone (corner row at
+	// rows-3 + 2 blank rows); if it overflows (e.g. an open slash dropdown
+	// on a short screen) let the top rows (logo/title) slide off so the
+	// composer stays fully visible
+	const top = Math.floor((rows - 3 - block.length) / 2);
 	const lines: Seg[][] = [];
 	for (let i = 0; i < rows; i++) {
 		const bi = i - top;
-		lines.push(bi >= 0 && bi < block.length ? block[bi] : blankLine(cols));
+		lines.push(
+			bi >= 0 && bi < block.length && i < rows - 3
+				? block[bi]
+				: blankLine(cols),
+		);
 	}
 
-	// corners
-	const cwdLabel = ` ${shortCwd(s.cwd)}`;
+	// corners — same bottom placement as the session status bar: 2-col
+	// inset each side, two blank rows below
+	const cwdLabel = `  ${shortCwd(s.cwd)}`;
 	const branchLabel = s.gitBranch ? ` (${s.gitBranch})` : '';
-	const ver = `${VERSION} `;
+	const ver = `${VERSION}  `;
 	const cornerRow = padSegs(
 		[
 			seg(cwdLabel, 'muted'),
@@ -320,6 +327,6 @@ export function homeLines(
 		],
 		cols,
 	);
-	lines[rows - 1] = truncSegs(cornerRow, cols);
+	if (rows >= 3) lines[rows - 3] = truncSegs(cornerRow, cols);
 	return lines;
 }

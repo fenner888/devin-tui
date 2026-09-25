@@ -79,13 +79,16 @@ let currentMode = 'normal';
 
 function effortOptions(model: string) {
 	// Claude Opus 5 caps at 'high' — a different effort list for one model
-	const all = [
+	let all = [
 		{value: 'low', name: 'Low'},
 		{value: 'medium', name: 'Medium'},
 		{value: 'high', name: 'High'},
 		{value: 'max', name: 'Max'},
 	];
-	return model === 'opus-5' ? all.slice(0, 3) : all;
+	// test override: DEVIN_TUI_FAKE_EFFORTS="medium,high,max" restricts the list
+	const only = process.env.DEVIN_TUI_FAKE_EFFORTS?.split(',').filter(Boolean);
+	if (only?.length) all = all.filter(e => only.includes(e.value));
+	return model === 'opus-5' ? all.filter(e => e.value !== 'max') : all;
 }
 
 function buildConfig(): SessionConfigOption[] {

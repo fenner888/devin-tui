@@ -108,7 +108,7 @@ const COLOR: Record<Token, StyleDef> = {
 	pk: {fg: '#4db8ff'},
 	pkBold: {fg: '#4db8ff', bold: true},
 	pkDim: {fg: '#4db8ff', dim: true},
-	pkOff: {fg: '#3a3a3a'},
+	pkOff: {fg: '#5f6b78'},
 	pkGreen: {fg: '#3ddc84'},
 	pkYellow: {fg: '#e6d17a'},
 	pkOrange: {fg: '#e5a07a'},

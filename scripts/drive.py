@@ -407,6 +407,38 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # effort bars: run with DEVIN_TUI_FAKE_EFFORTS=medium,high,max for a
+    # 3-value thought_level (current max). Home picker: Max → ← High →
+    # ← Medium → → High, then filter text 'sw' + ← proves arrows still
+    # move effort; then /resume -> session screen, /model + ← there too.
+    # PNGs: effort-max.png / effort-high.png / effort-medium.png
+    "effort": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"/model"),
+        (0.3, b"\r"),             # picker opens (effort Max, 3/3 bars)
+        (1.2, b""),               # effort-max frame
+        (0.2, b"\x1b[D"),         # <- -> High (2/3)
+        (1.0, b""),               # effort-high frame
+        (0.2, b"\x1b[D"),         # <- -> Medium (1/3)
+        (1.0, b""),               # effort-medium frame
+        (0.2, b"\x1b[C"),         # -> -> High
+        (0.6, b"sw"),             # filter text present
+        (0.2, b"\x1b[D"),         # arrows still adjust effort -> Medium
+        (0.8, b""),
+        (0.5, ESC),               # close picker
+        (0.6, b"/resume"),
+        (0.3, b"\r"),             # session picker
+        (1.0, b"\r"),             # load newest -> session screen
+        (4.0, b""),               # replay finishes
+        (0.6, b"/model"),
+        (0.3, b"\r"),             # picker on the session screen
+        (0.5, b"\x1b[D"),         # <- works here too
+        (0.8, b""),
+        (0.5, ESC),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # no-truecolor run ending on the model picker (inverse + ANSI fallback)
     "fallback": [
         (6.0, b"\r"),             # needsAuth menu -> auth

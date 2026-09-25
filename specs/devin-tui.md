@@ -45,7 +45,7 @@ are defined. Grayscale palette:
   becomes inverse. One switch in `theme.ts`.
 - **Picker palette** (a hue exception, matching the Devin CLI `/model`
   picker): `pk` #4db8ff blue, `pkDim` = blue dimmed (arrows), `pkSel` row bg
-  #1c2530, `pkOff` #3a3a3a unfilled bars; reserved for badges: `pkGreen`
+  #1c2530, `pkOff` #5f6b78 unfilled bars; reserved for badges: `pkGreen`
   #3ddc84, `pkYellow` #e6d17a, `pkFree` = #0a0a0a on #4db8ff. Fallback:
   ANSI `blueBright`/`green`/`yellow`, selected row = inverse.
 - **CLI-matching hue exceptions** — the only non-picker color: `ok` #3ddc84
@@ -606,7 +606,9 @@ state to `needsAuth`.
   (normal/plan/accept-edits), `configOptions` on `session/new` (mode
   select, a 10-model select in two groups plus a 5-pair Fusion group —
   2 leads × 3 sidekicks, one pair missing — thought_level
-  low/medium/high/max — a shorter list for `opus-5`),
+  low/medium/high/max — a shorter list for `opus-5`;
+  `DEVIN_TUI_FAKE_EFFORTS="medium,high,max"` restricts the effort list
+  to a real-Devin-shaped 3 values),
   `session/set_config_option` (stderr log + `config_option_update`
   push), `logout`, `_cognition.ai/output` notifications, slash commands
   advertised at `session/new` (with `cognition.ai/category` meta + one
@@ -650,7 +652,10 @@ state to `needsAuth`.
   `DRIVE_AGENT=real DRIVE_CWD=<scratch repo>`) is the real-Devin edit
   test; `pricing`/`pricing80` cover the catalog pricing block (priced,
   FREE, fusion pair, 80x24 shedding — needs `DEVIN_TUI_MODELS_FILE`);
-  `fallback` ends on the picker without truecolor.
+  `effort` covers the reasoning-effort bars on a 3-value
+  thought_level (`DEVIN_TUI_FAKE_EFFORTS=medium,high,max`) incl.
+  arrows-with-filter and the session-screen picker; `fallback` ends
+  on the picker without truecolor.
 - `scripts/snapshot.ts` — ANSI → screen emulator; `--after <marker>` dumps
   the first complete frame containing the marker, `--after-last` the last,
   `--before` the last complete frame before the marker's sync block

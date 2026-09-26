@@ -536,7 +536,7 @@ SCENARIOS = {
         (1.0, b""),
     ],
     # update notice: DEVIN_TUI_FORCE_UPDATE_CHECK=1 + DEVIN_TUI_UPDATE_URL
-    # -> a local server serving {"version":"0.2.0"}; home corner +
+    # -> a local server serving {"version":"0.3.0"}; home corner +
     # session status bar show the notice (update-home.png/update-bar.png)
     "update": [
         (6.0, b"\r"),             # needsAuth -> auth -> ready

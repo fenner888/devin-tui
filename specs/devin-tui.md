@@ -146,7 +146,7 @@ A vertically + horizontally centered column:
 
 1. The 2× braille mark (with shimmer).
 2. `Devin` bold bright + ` TUI` muted; below, muted
-   `v0.1.0 · <agentInfo.title once known>`.
+   `v0.2.0 · <agentInfo.title once known>`.
 3. The input panel (composer), width `min(78, cols-8)` — a rounded bezel
    frame `╭─…─╮` / `│ … │` / `╰─…─╯` drawn in `bezel*` tokens on the screen
    `bg`, with `panel` bg inside and 1 col of horizontal padding. Content
@@ -182,7 +182,7 @@ A vertically + horizontally centered column:
    `● Tip  <key> <text>` (● / Tip / key bright, rest muted) cycling ~5 tips
    every ~10s.
 6. Corners: bottom-left `~cwd` muted + ` (<branch>)` faint (omitted
-   outside a git repo), bottom-right `v0.1.0` faint — plus ` · update `
+   outside a git repo), bottom-right `v0.2.0` faint — plus ` · update `
    muted + `v<latest>` bright + ` available — git pull` muted when an
    update check found a newer version — inset 2 cols on
    both sides and placed at `rows-3` (two blank rows below), matching

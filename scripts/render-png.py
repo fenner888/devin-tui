@@ -7,7 +7,8 @@ Usage:
 
 Uses `npx tsx scripts/snapshot.ts --json` for ANSI emulation, then paints the
 cell grid with Pillow. Menlo for text; braille glyphs (U+2800-28FF) fall back
-to a font that covers them (checked and reported on stderr).
+to a font that covers them (checked and reported on stderr). Linux font
+paths (DejaVu / Liberation) are used when the macOS ones are absent.
 """
 import argparse
 import json
@@ -27,13 +28,30 @@ FONT_CANDIDATES = [
     "/System/Library/Fonts/Menlo.ttc",
     "/System/Library/Fonts/SFMono-Regular.otf",
     "/System/Library/Fonts/Monaco.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
 ]
-# per-glyph fallback chain for anything the main font lacks
-FALLBACK_CANDIDATES = [
+# per-glyph fallback chains for anything the main font lacks
+BRAILLE_FONTS = [
     "/System/Library/Fonts/Apple Braille.ttf",   # U+2800–28FF
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+    "/usr/share/fonts/noto/NotoSansSymbols2-Regular.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSerif.ttf",
+    "/usr/share/fonts/gnu-free/FreeSerif.otf",
+]
+SYMBOL_FONTS = [
     "/System/Library/Fonts/Apple Symbols.ttf",   # ∴ ◐ ○ ● ✎ etc.
     "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
 ]
+BLANK_CHARS = {" ", "\u2800"}  # U+2800 braille blank has no ink
 
 DEFAULT_FG = (216, 216, 216)  # #d8d8d8-ish terminal default
 DEFAULT_BG = (0, 0, 0)
@@ -119,20 +137,22 @@ def main():
     font, font_path = load_font(FONT_CANDIDATES, 17)
     if font is None:
         sys.exit("no monospace font found")
-    # fallback chain: braille range → Apple Braille first; other missing
-    # glyphs → Apple Symbols → Arial Unicode
+    # fallback chain: braille range → braille fonts first; other missing
+    # glyphs → symbol fonts
     fb = {}
-    for path in FALLBACK_CANDIDATES:
+    for path in dict.fromkeys(BRAILLE_FONTS + SYMBOL_FONTS):
         if os.path.exists(path):
             try:
                 fb[path] = ImageFont.truetype(path, 17)
             except Exception:
                 pass
     print(f"font: {font_path} | fallbacks: {list(fb)}", file=sys.stderr)
-
-    BRAILLE_FONT = "/System/Library/Fonts/Apple Braille.ttf"
-    SYMBOLS_FONT = "/System/Library/Fonts/Apple Symbols.ttf"
-    ARIAL_FONT = "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"
+    if not any(p in fb for p in BRAILLE_FONTS) and not has_glyph(font, "\u28ff"):
+        print(
+            "warning: no braille-capable font found; braille glyphs will render "
+            "as boxes (install fonts-dejavu-core or fonts-noto)",
+            file=sys.stderr,
+        )
 
     glyph_cache = {}
 
@@ -144,11 +164,11 @@ def main():
         if not has_glyph(font, ch):
             cp = ord(ch[0])
             chain = (
-                [BRAILLE_FONT, SYMBOLS_FONT, ARIAL_FONT]
+                BRAILLE_FONTS + SYMBOL_FONTS
                 if 0x2800 <= cp <= 0x28FF
-                else [SYMBOLS_FONT, ARIAL_FONT, BRAILLE_FONT]
+                else SYMBOL_FONTS + BRAILLE_FONTS
             )
-            for path in chain:
+            for path in dict.fromkeys(chain):
                 cand = fb.get(path)
                 if cand is not None and has_glyph(cand, ch):
                     f = cand
@@ -172,7 +192,7 @@ def main():
             px, py = x * CELL_W, y * CELL_H
             draw.rectangle([px, py, px + CELL_W - 1, py + CELL_H - 1], fill=bg)
             ch = cell.get("ch") or " "
-            if ch and ch != " ":
+            if ch not in BLANK_CHARS:
                 draw.text((px, py + 1), ch, font=font_for(ch), fill=fg)
 
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)

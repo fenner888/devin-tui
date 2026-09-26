@@ -28,6 +28,7 @@ import {
 	type State,
 } from '../state/store.js';
 import type {CatalogState} from '../catalog.js';
+import {fmtSpend, sessionSpend} from '../spend.js';
 
 export interface SessionUI {
 	value: string;
@@ -153,7 +154,11 @@ export function sessionLines(
 	// bar, and two below the status bar so it doesn't sit near the last row
 	lines.push(blankLine(cols));
 	const elapsed = s.turnStartedAt ? Date.now() - s.turnStartedAt : 0;
-	lines.push(statusBar(s, cols, ui.tick, elapsed));
+	const spend =
+		s.turnStats.length > 0 || s.reportedCost
+			? fmtSpend(sessionSpend(s.turnStats, ui.catalog, s.reportedCost))
+			: undefined;
+	lines.push(statusBar(s, cols, ui.tick, elapsed, spend));
 	lines.push(blankLine(cols));
 	lines.push(blankLine(cols));
 

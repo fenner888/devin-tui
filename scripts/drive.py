@@ -552,6 +552,39 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # spend tracking: /model -> Claude Opus 5 (High cost tier) -> one turn
+    # -> status bar shows the priced spend seg before Context; /status
+    # prints the spend line (+extra dims line when FAKE_EXTRA_DIMS=1)
+    "spend": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"/model"),
+        (0.3, b"\r"),             # picker open
+        (0.5, b"opus"),           # filter -> Claude Opus 5
+        (0.3, b"\r"),             # apply model=opus-5 + effort
+        (2.0, b""),
+        (0.5, b"hi"),
+        (0.3, b"\r"),             # prompt -> session view
+        (9.0, b"1"),              # permission -> Yes
+        (7.0, b""),               # turn_stats arrived -> spend seg
+        (0.5, b"/status"),
+        (0.3, b"\r"),             # spend line in /status
+        (1.5, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # -c resume: the load replays turn_stats for both prior turns -> the
+    # spend seg + /status reflect the resumed session's totals
+    "spendresume": [
+        (6.0, b"\r"),             # needsAuth -> auth -> resume proceeds
+        (7.0, b""),               # replay done -> spend in the bar
+        (0.5, b"/status"),
+        (0.3, b"\r"),
+        (1.5, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # no-truecolor run ending on the model picker (inverse + ANSI fallback)
     "fallback": [
         (6.0, b"\r"),             # needsAuth menu -> auth
@@ -567,6 +600,7 @@ SCENARIOS = {
 # extra CLI args per scenario (e.g. -c for --continue)
 SCENARIO_ARGS = {
     "continue": ["-c"],
+    "spendresume": ["-c"],
     "resumeid": ["-r", "fake-session-middle"],
 }
 

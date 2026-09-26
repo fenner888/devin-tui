@@ -94,7 +94,9 @@ on a boot error).
   terminal; at startup a log over 5 MB is rotated to `devin-acp.log.1`
   (overwriting the old one). `_cognition.ai/output` ext notifications
   append to the same log; other `_cognition.ai/*` notifications are
-  swallowed via the SDK's `extNotification` hook.
+  swallowed via the SDK's `extNotification` hook — except
+  `_cognition.ai/turn_stats`, which feeds per-session spend tracking
+  (see Spend tracking).
 - `DEVIN_TUI_DEBUG=1` (off by default) opts in to protocol captures —
   `session-updates.jsonl` (every non-chunk update + permission requests),
   `session-config.json` and `config-updates.jsonl` in the same directory.
@@ -523,15 +525,26 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   session title (from `session_info_update`, muted, max 30 cols) precedes
   `<model> <effort>` (effort = `thought_level` value name, omitted when
   none); then `  │  turns <n>  │  tools <n>` and `│  <elapsed>` only while
-  working. Right: `Context: 14k / 262k tokens (5%)` from the latest
+  working (elapsed is its own group — it outlives the counters and drops
+  just after the cwd collapses). Right: the session spend (see Spend tracking — `fmtSpend`,
+  shown only when any `turn_stats` arrived or a `usage_update` carried
+  `cost`) immediately precedes `Context: 14k / 262k tokens (5%)` from
+  the latest
   `usage_update` (k = /1000 rounded, % = used/size rounded, omitted until
-  the first update) then `● working` (spinner) / `○ idle` then
+  the first update), then `● working` (spinner) / `○ idle` then
   `  ctrl+o expand|collapse  esc cancel  ctrl+p commands` (keys bright,
-  labels muted). When `updateAvailable` is set the right side gains a
+  labels muted). The bar keeps a 2-col inset on each side and at least a
+  3-col gap between the left and right groups. When
+  `updateAvailable` is set the right side gains a
   leading `update v<latest> · git pull` seg (name muted, version bright) —
   it is the FIRST thing dropped under width pressure, then `ctrl+o`, then the rest
   of the key hints, then turns/tools, then the session title, then the
-  branch, then collapse the cwd to its basename (never dropped). Notices
+  branch, then the cwd collapses to its basename (never dropped) — the
+  elapsed seg rides along — then the context seg compacts to `ctx <n>%`,
+  then drops entirely (the working spinner + elapsed outrank it during a
+  turn), then elapsed, then the working/idle seg (notices are never
+  dropped; a live notice outranks spend — spend yields before a notice
+  truncates) — spend is the last right-side item kept. Notices
   (`press ctrl+c again to quit`, `press esc again to
   interrupt`) temporarily replace the working/idle + hint segs, bright.
 - On `session_info_update` the terminal title is set via OSC
@@ -548,12 +561,39 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   `/status` (system line `signed in|signed out · <agentTitle> · session
   <short id|—> · log <path>`, plus a second system line `update v<latest>
   available — git pull` when an update is known — separate so it never
-  gets clipped by the 110-col content width), `/handoff [task]` (see
+  gets clipped by the 110-col content width; plus, when any spend data
+  exists, `spend $0.04 · 3 turns · in 10.5k · cached 10.6k · out 46`
+  — `fmtTokens` compacts the counts — with ` · <n> turn(s) on unpriced
+  models not included` appended when unpriced turns exist and no cost was
+  reported, or ` · reported by Devin` when one was; a final line joins any
+  summed extra dimensions as `<label> <value><tail|pluralTail>` by ` · `), `/handoff [task]` (see
   below), `/fusion`
   (see below), `/resume` (see above — session picker), `/help` (see
   Overlays → Help). Agent-advertised commands named `login`,
   `logout`, `status`, `model`, `handoff`, `fusion`, `resume` or `help` are filtered out of
   the Agent section and slash dropdown so local commands always win.
+
+## Spend tracking
+
+`src/spend.ts` (pure, no React). Devin emits `_cognition.ai/turn_stats`
+after every turn — and replays one per prior turn during `session/load`
+(after our `loadStart` reset, so totals survive resume for free;
+deduped by `turnRequestId` — Devin can re-emit). The payload's
+`responseDimensions` carry PER-TURN values: `input_tokens` (excludes
+cached), `cached_input_tokens`, `output_tokens`, `agent_messages`, a
+`metric` `model` holding the catalog variant LABEL (e.g. "SWE-2 Max"),
+plus account-dependent extra cumulativeMetrics (ACUs, credits) summed by
+uid. `sessionSpend` sums the turns and prices each by model label →
+catalog entry: `prices` → `(in*p.in + cached*(p.cached ?? p.in) +
+out*p.out)/1e6`; `cost_tier: 'Free'` → $0; `Fusion (…)` labels and
+anything unmatched → counted in `unpriced`. `fmtSpend` renders
+`$<2dp>` / `<$0.01` / `12.34 EUR` with a trailing `+` when unpriced
+turns exist. `usage_update`'s optional `cost` (Devin's own cumulative
+figure — not sent today) is stored as `reportedCost` and always wins.
+Spend shows in the status bar (before `Context:`; under width pressure
+the context seg compacts to `ctx <n>%` then drops, but the spend seg is
+the last right-side item kept) and in `/status`. `turnStats`/`reportedCost` reset with `usage` on logout,
+session load and `/clear`.
 
 ## /handoff — hand off to a cloud Devin
 
@@ -674,7 +714,7 @@ final status update has none); `_meta` is mined for `exitCode`
 (`terminal_exit.exit_code`, last seen wins) and `cwd`
 (`cognition.ai/cwd`); `plan` replaces entries; `available_commands_update` and
 `current_mode_update` tracked; `usage_update` → `{used, size}` for the
-context indicator; `session_info_update` → `sessionTitle` (+ OSC terminal
+context indicator (+ `cost` → `reportedCost` when present); `session_info_update` → `sessionTitle` (+ OSC terminal
 title). `user_message_chunk` merges consecutive chunks into one user item
 during a `session/load` replay (the same update during a live turn echoes
 our own submit and is dropped — the submit already rendered it).
@@ -683,7 +723,11 @@ activity row reads `Loading session`). `pendingPermission` holds the live permis
 toolCallId, options, `editableCommand` from the toolCall's
 `cognition.ai/editableCommand` meta); `queuedMessages` holds text
 submitted while working;
-`expandTools` (ctrl+o) expands collapsed command blocks.
+`expandTools` (ctrl+o) expands collapsed command blocks. `turnStats`
+accumulates parsed `_cognition.ai/turn_stats` (one per turn, deduped by
+`turnRequestId`, replayed on `session/load`) and `reportedCost` holds
+`usage_update`'s optional `cost` — both feed the spend display and reset
+with `usage` on logout/load/clear.
 Unknown update kinds ignored (never fatal). Status: booting / needsAuth /
 auth / idle / working / error + turn count, tool-call count, turn elapsed,
 agent title, `sidebar` flag (plan block visibility), `authMethods` +
@@ -719,7 +763,12 @@ state to `needsAuth`.
   that overflows at 80 cols → failing `Ran npm test` with
   `terminal_exit` code 1; `usage_update` after each
   tool; `session_info_update` {title}; markdown incl.
-  heading/bold/code/fence/bullets), slow cancelable second turn.
+  heading/bold/code/fence/bullets), slow cancelable second turn. A
+  real-shaped `_cognition.ai/turn_stats` ext notification (fresh
+  `turnRequestId`, `model` = the fixture catalog's variant label for the
+  applied uid+effort, plausible token counts) is emitted at the end of
+  each prompt turn and replayed once per replayed turn on `session/load`;
+  `FAKE_EXTRA_DIMS=1` adds an `acus` cumulativeMetric to the first turn.
   `session/list` returns 3 cwd-scoped sessions with titles/updatedAt;
   `session/load` replays a short history (merged `user_message_chunk`s,
   thought, messages, a completed execute call, `session_info_update`,

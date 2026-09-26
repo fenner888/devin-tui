@@ -26,6 +26,7 @@ import {homeLines} from './home.js';
 import {contentWidth, sessionLines} from './session.js';
 import {levelRank, loadCatalog, type CatalogState} from '../catalog.js';
 import {checkForUpdate} from '../update.js';
+import {fmtSpend, fmtTokens, sessionSpend} from '../spend.js';
 import {
 	asImage,
 	buildBlocks,
@@ -185,6 +186,9 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	const [mentionDismiss, setMentionDismiss] = useState<number | null>(null);
 
 	const connRef = useRef<AgentConn | null>(null);
+	/** sessionId a session/load is replaying into (state.sessionId still
+	 *  holds the previous one during the load) */
+	const loadingSession = useRef<string | null>(null);
 	const stateRef = useRef<State>(state);
 	stateRef.current = state;
 	const authSelRef = useRef(authSel);
@@ -244,6 +248,9 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		async (conn: AgentConn, sessionId: string) => {
 			dispatch({type: 'bootStep', id: 'session', state: 'active'});
 			dispatch({type: 'loadStart'});
+			// turn_stats replayed during the load carry THIS session's id,
+			// while state.sessionId still holds the previous one
+			loadingSession.current = sessionId;
 			setScrollOffset(0);
 			setPrompt({value: '', cursor: 0});
 			try {
@@ -262,6 +269,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				dispatch({type: 'bootStep', id: 'session', state: 'done'});
 				ready.current = true;
 			} finally {
+				loadingSession.current = null;
 				dispatch({type: 'loadEnd'});
 			}
 		},
@@ -431,6 +439,31 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				text: `update v${s.updateAvailable} available — git pull`,
 			});
 		}
+		if (s.turnStats.length > 0 || s.reportedCost) {
+			const sp = sessionSpend(s.turnStats, catalogRef.current, s.reportedCost);
+			const tail = sp.reported
+				? ' · reported by Devin'
+				: sp.unpriced > 0
+					? ` · ${sp.unpriced} turn${sp.unpriced === 1 ? '' : 's'} on unpriced models not included`
+					: '';
+			dispatch({
+				type: 'systemMsg',
+				text: `spend ${fmtSpend(sp)} · ${sp.turns} turn${sp.turns === 1 ? '' : 's'} · in ${fmtTokens(sp.input)} · cached ${fmtTokens(sp.cached)} · out ${fmtTokens(sp.output)}${tail}`,
+			});
+			if (sp.extra.length > 0) {
+				dispatch({
+					type: 'systemMsg',
+					text: sp.extra
+						.map(
+							x =>
+								`${x.label} ${Number(x.value.toFixed(2))}${
+									x.value === 1 ? x.tail : x.pluralTail
+								}`,
+						)
+						.join(' · '),
+				});
+			}
+		}
 	}, []);
 
 	/** /handoff — gather git context + transcript digest, then show the
@@ -503,6 +536,14 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 							},
 						});
 					}),
+				onTurnStats: (sessionId, stat) => {
+					// only the active session (or the one session/load is
+					// replaying) — strays stay in the log
+					const s = stateRef.current;
+					if (sessionId !== s.sessionId && sessionId !== loadingSession.current)
+						return;
+					dispatch({type: 'turnStats', stat});
+				},
 				onLog: () => {},
 				onSpawnError: err =>
 					dispatch({

@@ -11,7 +11,9 @@ Protocol — JSON-RPC over stdio). React + Ink, black & white.
 ### Sessions
 
 Tool calls, inline diffs, collapsible command output, the plan and a status
-bar with folder, branch, model and context usage:
+bar with folder, branch, model and context usage — plus per-session spend,
+computed from Devin's own per-turn token counts (`_cognition.ai/turn_stats`)
+× catalog prices; `/status` shows the breakdown:
 
 ![devin-tui session](docs/screenshot.png)
 

@@ -8,6 +8,7 @@ import type {
 	ToolCallStatus,
 	ToolKind,
 } from '@agentclientprotocol/sdk';
+import type {TurnStat} from '../spend.js';
 
 export type Status =
 	| 'booting'
@@ -106,6 +107,12 @@ export interface State {
 	notice?: string;
 	/** context usage from the latest usage_update */
 	usage?: {used: number; size: number};
+	/** Devin's own cumulative session cost when usage_update carried
+	 *  `cost` — wins over the figure computed from turn_stats */
+	reportedCost?: {amount: number; currency: string};
+	/** one per turn (deduped by turnRequestId) — per-turn token usage +
+	 *  model label from `_cognition.ai/turn_stats`, replays on load */
+	turnStats: TurnStat[];
 	/** session title from session_info_update */
 	sessionTitle?: string;
 	/** cwd's git branch (short sha when detached); shown in the status bar
@@ -153,6 +160,7 @@ export function initialState(cwd: string, model: string | undefined, logFile: st
 		expandTools: false,
 		loading: false,
 		echoBuf: '',
+		turnStats: [],
 	};
 }
 
@@ -165,6 +173,7 @@ export type Action =
 	| {type: 'agentInfo'; title: string}
 	| {type: 'gitBranch'; branch?: string}
 	| {type: 'updateAvailable'; version?: string}
+	| {type: 'turnStats'; stat: TurnStat}
 	| {type: 'authMethods'; methods: AuthMethod[]}
 	| {type: 'authError'; message?: string}
 	| {type: 'configOptions'; options: SessionConfigOption[]}
@@ -306,7 +315,17 @@ function applyUpdate(state: State, update: SessionUpdate): State {
 			return {...state, configOptions: update.configOptions};
 		}
 		case 'usage_update': {
-			return {...state, usage: {used: update.used, size: update.size}};
+			// optional cumulative `cost` is Devin's own figure — it wins
+			// over what we compute from turn_stats
+			const cost = (update as {cost?: {amount: number; currency: string} | null})
+				.cost;
+			return {
+				...state,
+				usage: {used: update.used, size: update.size},
+				...(cost
+					? {reportedCost: {amount: cost.amount, currency: cost.currency}}
+					: null),
+			};
 		}
 		case 'session_info_update': {
 			return {...state, sessionTitle: update.title ?? undefined};
@@ -411,6 +430,8 @@ export function reducer(state: State, action: Action): State {
 				authError: undefined,
 				queued: [],
 				usage: undefined,
+				reportedCost: undefined,
+				turnStats: [],
 				sessionTitle: undefined,
 			};
 		case 'sessionReady': {
@@ -437,6 +458,8 @@ export function reducer(state: State, action: Action): State {
 				permission: undefined,
 				queued: [],
 				usage: undefined,
+				reportedCost: undefined,
+				turnStats: [],
 				sessionTitle: undefined,
 				echoExpect: undefined,
 				echoBuf: '',
@@ -446,6 +469,13 @@ export function reducer(state: State, action: Action): State {
 			return {...state, loading: false, turnStartedAt: undefined};
 		case 'update':
 			return applyUpdate(state, action.update);
+		case 'turnStats':
+			// session/load replays every turn's stats — dedupe by request id
+			if (
+				state.turnStats.some(t => t.turnRequestId === action.stat.turnRequestId)
+			)
+				return state;
+			return {...state, turnStats: [...state.turnStats, action.stat]};
 		case 'permission':
 			return {...state, permission: action.req};
 		case 'permissionDone':
@@ -503,6 +533,8 @@ export function reducer(state: State, action: Action): State {
 				turnStartedAt: undefined,
 				queued: [],
 				usage: undefined,
+				reportedCost: undefined,
+				turnStats: [],
 				sessionTitle: undefined,
 				echoExpect: undefined,
 				echoBuf: '',

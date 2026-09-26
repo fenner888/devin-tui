@@ -908,6 +908,7 @@ export function statusBar(
 	cols: number,
 	tick: number,
 	elapsedMs: number,
+	spend?: string,
 ): Seg[] {
 	const mode = displayMode(s) ?? 'default';
 	const model = displayModel(s);
@@ -943,7 +944,8 @@ export function statusBar(
 		}
 		return segs;
 	};
-	// counters are dropped first when the bar gets tight
+	// counters are dropped first when the bar gets tight; the elapsed
+	// seg survives a few stages longer (still visible at ~80 cols)
 	const counters: Seg[] = [
 		seg('  │  ', 'rule'),
 		seg('turns ', 'muted'),
@@ -952,9 +954,10 @@ export function statusBar(
 		seg('tools ', 'muted'),
 		seg(String(s.toolCalls), 'bright'),
 	];
-	if (s.status === 'working') {
-		counters.push(seg('  │  ', 'rule'), seg(fmtElapsed(elapsedMs), 'bright'));
-	}
+	const elapsed: Seg[] =
+		s.status === 'working'
+			? [seg('  │  ', 'rule'), seg(fmtElapsed(elapsedMs), 'bright')]
+			: [];
 	// ctrl+o is the first hint dropped when the bar gets tight
 	const expandHint: Seg[] = [
 		seg('  '),
@@ -978,16 +981,24 @@ export function statusBar(
 						]
 					: [seg('○ idle', 'muted')]),
 			];
-	const ctx: Seg[] = s.usage
+	// session spend — the last right-side item kept under width pressure
+	const cost: Seg[] = spend ? [seg(spend, 'text'), seg('   ')] : [];
+	const ctxPct = s.usage
+		? Math.round((s.usage.used / s.usage.size) * 100)
+		: 0;
+	const ctxFull: Seg[] = s.usage
 		? [
 				seg(
 					`Context: ${Math.round(s.usage.used / 1000)}k / ${Math.round(
 						s.usage.size / 1000,
-					)}k tokens (${Math.round((s.usage.used / s.usage.size) * 100)}%)`,
+					)}k tokens (${ctxPct}%)`,
 					'muted',
 				),
 				seg('   '),
 			]
+		: [];
+	const ctxCompact: Seg[] = s.usage
+		? [seg(`ctx ${ctxPct}%`, 'muted'), seg('   ')]
 		: [];
 	// update notice — the first thing dropped under width pressure
 	const upd: Seg[] = s.updateAvailable
@@ -999,20 +1010,33 @@ export function statusBar(
 			]
 		: [];
 
-	let l = [...leftSegs(true, false), ...counters];
-	let r = [...upd, ...ctx, ...working, ...expandHint, ...hints];
-	// 2-col inset each side + ≥1 gap + 1 slack
-	const over = () => segsWidth(l) + segsWidth(r) + 6 > cols;
-	if (over()) r = [...ctx, ...working, ...expandHint, ...hints];
-	if (over()) r = [...ctx, ...working, ...hints];
-	if (over()) r = [...ctx, ...working];
-	if (over()) l = leftSegs(true, false);
+	let l = [...leftSegs(true, false), ...counters, ...elapsed];
+	let ctx = ctxFull;
+	let r = [...upd, ...cost, ...ctx, ...working, ...expandHint, ...hints];
+	// 2-col inset each side + ≥3 gap between the groups
+	const over = () => segsWidth(l) + segsWidth(r) + 7 > cols;
+	if (over()) r = [...cost, ...ctx, ...working, ...expandHint, ...hints];
+	if (over()) r = [...cost, ...ctx, ...working, ...hints];
+	if (over()) r = [...cost, ...ctx, ...working];
+	if (over()) l = [...leftSegs(true, false), ...elapsed];
 	// still tight: drop the session title, then the branch, then collapse
-	// the cwd to its basename
-	if (over()) l = leftSegs(true, false, false);
-	if (over()) l = leftSegs(false, false, false);
+	// the cwd to its basename (elapsed rides along, then drops too)
+	if (over()) l = [...leftSegs(true, false, false), ...elapsed];
+	if (over()) l = [...leftSegs(false, false, false), ...elapsed];
+	if (over()) l = [...leftSegs(false, true, false), ...elapsed];
+	// tighter still: compact the context seg, then drop it (the live
+	// working spinner + elapsed outrank it while a turn runs), then
+	// elapsed, then working/idle (never a notice) — spend is kept longest
+	if (over()) {
+		ctx = ctxCompact;
+		r = [...cost, ...ctx, ...working];
+	}
+	if (over()) r = [...cost, ...working];
 	if (over()) l = leftSegs(false, true, false);
-	const gap = Math.max(1, cols - segsWidth(l) - segsWidth(r) - 4);
+	if (over()) r = [...cost, ...(s.notice ? working : [])];
+	// a live notice outranks spend — yield before the notice truncates
+	if (over() && s.notice) r = [...working];
+	const gap = Math.max(3, cols - segsWidth(l) - segsWidth(r) - 4);
 	return padSegs(
 		[seg('  '), ...l, seg(' '.repeat(gap)), ...r, seg('  ')],
 		cols,

@@ -119,6 +119,143 @@ const EFFORT_BY_MODEL: Record<string, {value: string; name: string}[]> = {
 	'gemini-4': [], // Adaptive-like — no thought_level option at all
 };
 
+// model labels reported in turn_stats — the catalog VARIANT label for the
+// applied uid + effort, exactly as real Devin reports (e.g. 'SWE-2 Max')
+const MODEL_LABELS: Record<string, Record<string, string>> = {
+	'gpt-6-sol': {
+		none: 'GPT-6 Sol No Thinking',
+		low: 'GPT-6 Sol Low Thinking',
+		medium: 'GPT-6 Sol Medium Thinking',
+		high: 'GPT-6 Sol High Thinking',
+		xhigh: 'GPT-6 Sol XHigh Thinking',
+		max: 'GPT-6 Sol Max Thinking',
+	},
+	'swe-2': {medium: 'SWE-2 Medium', high: 'SWE-2 High', max: 'SWE-2 Max'},
+	'swe-1.6': {high: 'SWE-1.6 High', max: 'SWE-1.6 Max'},
+	'swe-1.5': {
+		low: 'SWE-1.5 Low',
+		medium: 'SWE-1.5 Medium',
+		high: 'SWE-1.5 High',
+		max: 'SWE-1.5 Max',
+	},
+	'opus-5': {
+		low: 'Claude Opus 5 Low',
+		medium: 'Claude Opus 5 Medium',
+		high: 'Claude Opus 5 High',
+		xhigh: 'Claude Opus 5 XHigh',
+		max: 'Claude Opus 5 Max',
+	},
+	'sonnet-5': {medium: 'Claude Sonnet 5 Medium', high: 'Claude Sonnet 5 High'},
+	'haiku-5': {medium: 'Claude Haiku 5 Medium', high: 'Claude Haiku 5 High'},
+	'gpt-5.4': {
+		medium: 'GPT-5.4 Medium',
+		high: 'GPT-5.4 High',
+		max: 'GPT-5.4 Max',
+	},
+	'gemini-4': {'': 'Gemini 4'},
+	inkling: {'': 'Inkling'},
+};
+
+const FUSION_OPTS = [
+	{
+		value: 'fusion-claude-opus-5-5-high-sidekick-swe-2-medium',
+		name: 'Fusion (Claude Opus 5.5 High + SWE-2 Medium)',
+	},
+	{
+		value: 'fusion-claude-opus-5-5-high-sidekick-swe-2-high',
+		name: 'Fusion (Claude Opus 5.5 High + SWE-2 High)',
+	},
+	{
+		value: 'fusion-claude-opus-5-5-high-sidekick-gpt-5-6-luna-high-thinking',
+		name: 'Fusion (Claude Opus 5.5 High + GPT-5.6 Luna High Thinking)',
+	},
+	{
+		value: 'fusion-gpt-6-sol-high-thinking-sidekick-swe-2-medium',
+		name: 'Fusion (GPT-6 Sol High Thinking + SWE-2 Medium)',
+	},
+	{
+		value: 'fusion-gpt-6-sol-high-thinking-sidekick-swe-2-high',
+		name: 'Fusion (GPT-6 Sol High Thinking + SWE-2 High)',
+	},
+	// one pair missing: GPT-6 Sol × GPT-5.6 Luna
+];
+
+function modelLabel(): string {
+	const perEffort = MODEL_LABELS[currentModel];
+	if (perEffort) return perEffort[currentEffort] ?? Object.values(perEffort)[0];
+	if (currentModel.startsWith('fusion-')) {
+		return FUSION_OPTS.find(o => o.value === currentModel)?.name ?? currentModel;
+	}
+	return currentModel;
+}
+
+/** `_cognition.ai/turn_stats` — real Devin shape, emitted once per turn
+ *  (and replayed per turn on session/load). FAKE_EXTRA_DIMS=1 adds an
+ *  account-style extra dimension to the first turn. */
+async function emitTurnStats(turnIndex: number): Promise<void> {
+	if (!sessionId || !conn) return;
+	const rid = `fake-${Date.now().toString(36)}-${turnIndex}-${Math.random()
+		.toString(36)
+		.slice(2, 8)}`;
+	const cm = (value: number, tail: string, pluralTail: string) => ({
+		type: 'cumulativeMetric',
+		value,
+		prefix: '',
+		tail,
+		pluralTail,
+	});
+	const dims: object[] = [
+		{
+			uid: 'agent_messages',
+			groupTitle: 'Response Statistics',
+			label: 'Agent messages',
+			kind: cm(turnIndex + 1, ' message', ' messages'),
+		},
+		{
+			uid: 'model',
+			groupTitle: 'Response Statistics',
+			label: 'Model',
+			kind: {type: 'metric', value: modelLabel()},
+		},
+		{
+			uid: 'input_tokens',
+			groupTitle: 'Token Usage',
+			label: 'Input tokens',
+			kind: cm(12000 + turnIndex * 900, ' token', ' tokens'),
+		},
+		{
+			uid: 'output_tokens',
+			groupTitle: 'Token Usage',
+			label: 'Output tokens',
+			kind: cm(400 + turnIndex * 120, ' token', ' tokens'),
+		},
+		{
+			uid: 'cached_input_tokens',
+			groupTitle: 'Token Usage',
+			label: 'Cached input tokens',
+			kind: cm(9000 + turnIndex * 1500, ' token', ' tokens'),
+		},
+	];
+	if (process.env.FAKE_EXTRA_DIMS === '1' && turnIndex === 0) {
+		dims.push({
+			uid: 'acus',
+			groupTitle: 'Response Statistics',
+			label: 'ACUs',
+			kind: cm(0.25, ' ACU', ' ACUs'),
+		});
+	}
+	try {
+		await conn.extNotification('_cognition.ai/turn_stats', {
+			sessionId,
+			turnClientMessageId: `fake-cm-${rid}`,
+			turnRequestId: rid,
+			responseDimensions: dims,
+		});
+	} catch {
+		// notifications are best-effort
+	}
+}
+
 function effortOptions(model: string) {
 	let all = EFFORT_BY_MODEL[model] ?? [
 		{value: 'low', name: 'Low'},
@@ -176,29 +313,7 @@ function buildConfig(): SessionConfigOption[] {
 				{
 					group: 'fusion',
 					name: 'Fusion',
-					options: [
-						{
-							value: 'fusion-claude-opus-5-5-high-sidekick-swe-2-medium',
-							name: 'Fusion (Claude Opus 5.5 High + SWE-2 Medium)',
-						},
-						{
-							value: 'fusion-claude-opus-5-5-high-sidekick-swe-2-high',
-							name: 'Fusion (Claude Opus 5.5 High + SWE-2 High)',
-						},
-						{
-							value: 'fusion-claude-opus-5-5-high-sidekick-gpt-5-6-luna-high-thinking',
-							name: 'Fusion (Claude Opus 5.5 High + GPT-5.6 Luna High Thinking)',
-						},
-						{
-							value: 'fusion-gpt-6-sol-high-thinking-sidekick-swe-2-medium',
-							name: 'Fusion (GPT-6 Sol High Thinking + SWE-2 Medium)',
-						},
-						{
-							value: 'fusion-gpt-6-sol-high-thinking-sidekick-swe-2-high',
-							name: 'Fusion (GPT-6 Sol High Thinking + SWE-2 High)',
-						},
-						// one pair missing: GPT-6 Sol × GPT-5.6 Luna
-					],
+					options: FUSION_OPTS,
 				},
 			],
 		},
@@ -500,9 +615,12 @@ const agent: Agent = {
 		await replay({sessionUpdate: 'tool_call_update', toolCallId: 'tc-old#1', status: 'in_progress', content: [{type: 'content', content: text('acp\nstate\nui')}], _meta: {terminal_exit: {terminal_id: 'fake-term-0', exit_code: 0, signal: null}}} as never);
 		await replay({sessionUpdate: 'tool_call_update', toolCallId: 'tc-old#1', status: 'completed'});
 		await replay({sessionUpdate: 'agent_message_chunk', content: text('Done — ./src has 3 entries.')});
+		// real Devin replays each turn's turn_stats during session/load
+		await emitTurnStats(0);
 		// a second replayed user message → turns must count 2
 		await replay({sessionUpdate: 'user_message_chunk', content: text('thanks — and package.json?')});
 		await replay({sessionUpdate: 'agent_message_chunk', content: text('package.json is 22 lines.')});
+		await emitTurnStats(1);
 		await replay({sessionUpdate: 'session_info_update', title: 'Workspace Overview'});
 		await replay({sessionUpdate: 'available_commands_update', availableCommands: AVAILABLE_COMMANDS});
 		await replay({sessionUpdate: 'usage_update', used: 18441, size: 262000});
@@ -563,6 +681,7 @@ const agent: Agent = {
 		cancelled = false;
 		await sleep(2500); // mimic real Devin's ~4s TTFT before the first chunk
 		const stopReason = promptCount === 1 ? await runMainTurn() : await runSlowTurn();
+		await emitTurnStats(promptCount - 1);
 		return {stopReason};
 	},
 	async cancel() {

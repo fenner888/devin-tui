@@ -21,12 +21,16 @@ import {
 	type SessionModeState,
 	type SessionNotification,
 } from '@agentclientprotocol/sdk';
+import {parseTurnStats, type TurnStat} from '../spend.js';
 
 export interface ConnEvents {
 	onUpdate: (n: SessionNotification) => void;
 	onPermissionRequest: (
 		req: RequestPermissionRequest,
 	) => Promise<RequestPermissionOutcome>;
+	/** `_cognition.ai/turn_stats` ext notification, parsed (per-turn token
+	 *  usage + model label). Fired for replays during session/load too. */
+	onTurnStats: (sessionId: string, stat: TurnStat) => void;
 	onLog: (line: string) => void;
 	onExit: (code: number | null, signal: string | null) => void;
 	onSpawnError: (err: Error) => void;
@@ -147,6 +151,10 @@ export class AgentConn {
 					level?: string;
 					sessionId?: string;
 				};
+				if (method === '_cognition.ai/turn_stats') {
+					const ts = parseTurnStats(params);
+					if (ts) this.ev.onTurnStats(ts.sessionId, ts.stat);
+				}
 				if (method === '_cognition.ai/output' && p && typeof p === 'object') {
 					this.log(
 						`[ext output${p.level ? `/${p.level}` : ''}${p.channel ? ` ${p.channel}` : ''}] ${p.message ?? JSON.stringify(params)}`,

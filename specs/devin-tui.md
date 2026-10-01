@@ -105,9 +105,14 @@ on a boot error).
   `session-config.json` and `config-updates.jsonl` in the same directory.
   They contain session content (file contents, command output), so they
   are debug-only; authenticate payloads are never written anywhere.
-- **`devin-tui update`** — handled by `bin/devin-tui.sh` before the TUI
-  starts: `git pull --ff-only` + `npm install` in the clone the launcher
-  resolves to, then prints the new version; exits non-zero on failure.
+- **`devin-tui update`** (aliases `upgrade`, `--update`) — handled by
+  `bin/devin-tui.sh` before the TUI starts, in the clone the launcher
+  resolves to: fails with the fix-it command when git is missing, the dir
+  is not a git clone, or HEAD is not `main`; resets `package-lock.json`
+  (npm rewrites it), `git pull --ff-only --autostash origin main`, then
+  `npm ci` (falls back to `npm install`); prints `updated vOld → vNew` or
+  `already up to date (vX)`; exits non-zero on any failure.
+- **`devin-tui --version`** (`-v`, `version`) — prints `devin-tui vX.Y.Z`.
 - **Update check** (`src/update.ts`) — fire-and-forget after mount,
   never blocks startup. Local version = `package.json` `version` (read
   via `import.meta.url`); remote = `GET
@@ -152,7 +157,7 @@ A vertically + horizontally centered column:
 
 1. The 2× braille mark (with shimmer).
 2. `Devin` bold bright + ` TUI` muted; below, muted
-   `v0.2.2 · <agentInfo.title once known>`.
+   `v0.2.3 · <agentInfo.title once known>`.
 3. The input panel (composer), width `min(78, cols-8)` — a rounded bezel
    frame `╭─…─╮` / `│ … │` / `╰─…─╯` drawn in `bezel*` tokens on the screen
    `bg`, with `panel` bg inside and 1 col of horizontal padding. Content
@@ -188,7 +193,7 @@ A vertically + horizontally centered column:
    `● Tip  <key> <text>` (● / Tip / key bright, rest muted) cycling ~5 tips
    every ~10s.
 6. Corners: bottom-left `~cwd` muted + ` (<branch>)` faint (omitted
-   outside a git repo), bottom-right `v0.2.2` faint — plus ` · update `
+   outside a git repo), bottom-right `v0.2.3` faint — plus ` · update `
    muted + `v<latest>` bright + ` available — devin-tui update` muted when an
    update check found a newer version — inset 2 cols on
    both sides and placed at `rows-3` (two blank rows below), matching

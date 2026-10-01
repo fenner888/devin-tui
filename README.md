@@ -97,14 +97,28 @@ works — pricing just stays hidden.
 ## Updating
 
 ```sh
-devin-tui update      # git pull --ff-only + npm install in the clone
+devin-tui update      # works from any directory
+devin-tui --version   # what you have now
 ```
 
-(equivalent to `cd devin-tui && git pull && npm install`). Restart any
-running devin-tui afterwards. No re-link is needed — `devin-tui` on PATH points at the clone. The TUI
-shows a notice in the corner/status bar when a newer version is published
-(checked at most once per 24 h, cached in `~/.cache/devin-tui/`); set
-`DEVIN_TUI_NO_UPDATE_CHECK=1` to disable it.
+This pulls `main` into the clone that `devin-tui` runs from and reinstalls
+dependencies, then prints the old → new version. Restart any running
+devin-tui afterwards. No re-link is needed — `devin-tui` on PATH points at
+the clone. The TUI shows a notice in the corner/status bar when a newer
+version is published (checked at most once per 24 h, cached in
+`~/.cache/devin-tui/`); set `DEVIN_TUI_NO_UPDATE_CHECK=1` to disable it.
+
+If `devin-tui update` starts the TUI instead of updating, your install is
+older than v0.2.1 and predates the command. Update once by hand — this
+finds the clone from the `devin-tui` on your PATH:
+
+```sh
+cd "$(dirname "$(dirname "$(realpath "$(which devin-tui)")")")" && git pull && npm install
+```
+
+If the update stops with an error, it says what to run: the clone must be
+on `main`, and local edits are stashed and re-applied automatically
+(a lockfile rewritten by `npm install` is simply reset).
 
 ### Compatibility with Devin CLI updates
 

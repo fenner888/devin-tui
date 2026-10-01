@@ -513,8 +513,17 @@ Rendered with the same `pickerShell` as the model picker, same slot:
 - Items are separated by exactly one blank row; agent-message leading and
   trailing blank markdown lines are trimmed at render.
 - **Scrolling**: transcript renders to pre-wrapped `Seg[]` lines; viewport
-  slice, tail-follow. PgUp/PgDn page, shift+↑/↓ line. `↓ n more` marker,
-  faint, right-aligned above the input.
+  slice, tail-follow. PgUp/PgDn page, shift+↑/↓ line, mouse wheel 3
+  lines per notch. `↓ n more` marker, faint, right-aligned above the input.
+- **Mouse** (`src/mouse.ts`): xterm mouse reporting `ESC[?1000h` +
+  SGR `ESC[?1006h` is enabled with the alt screen (always disabled on
+  exit) so wheel notches arrive as `ESC[<64|65;x;yM` instead of the
+  terminal's alternate-scroll ↑/↓ keys (which would recall prompt
+  history). Wheel reports scroll the transcript; other mouse reports are
+  swallowed — never typed into the input. Native drag-selection then
+  needs a modifier (shift; option in iTerm2). `/mouse` toggles reporting
+  at runtime (system line says which mode is active);
+  `DEVIN_TUI_NO_MOUSE=1` starts with it off.
 - **Input panel**: same framed block as home, full content width. Meta row
   shows `<mode> · <model> · <cwd>` — but `connecting…` muted in place of the
   mode until `sessionReady`, and the model segment only when the model is
@@ -559,7 +568,8 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   Slash text goes to the
   agent verbatim. Local commands: `/quit` / `/exit` (bare `quit` / `exit`
   also work, like the Devin CLI), `/clear` (fresh session → back to
-  home), `/sidebar` (toggle plan block), `/model` (model picker), `/login`
+  home), `/sidebar` (toggle plan block), `/mouse` (toggle mouse-wheel
+  scrolling), `/model` (model picker), `/login`
   (in `needsAuth`: same as picking the first auth method; while signed in:
   re-authenticates with the first method and keeps the session), `/logout`
   (`conn.logout({})`, then clears session, transcript and config state →

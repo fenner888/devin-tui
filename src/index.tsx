@@ -73,7 +73,7 @@ function main(): void {
 			onQuit={() => quit(0)}
 			onConn={c => (conn = c)}
 		/>,
-		{exitOnCtrlC: false, patchConsole: false},
+		{exitOnCtrlC: false, patchConsole: false, incrementalRendering: true},
 	);
 
 	function quit(code: number): void {

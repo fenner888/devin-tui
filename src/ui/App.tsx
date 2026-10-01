@@ -71,6 +71,7 @@ import {
 	gatherGitContext,
 	sendHandoff,
 } from '../handoff.js';
+import {copyToClipboard} from '../clipboard.js';
 import type {Seg} from './lines.js';
 
 function errMsg(e: unknown): string {
@@ -493,7 +494,12 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		setHandoff(null);
 		try {
 			const url = await sendHandoff(h.prompt, h.task);
-			dispatch({type: 'systemMsg', text: '◆ handed off → ', bright: url});
+			copyToClipboard(url);
+			dispatch({
+				type: 'systemMsg',
+				text: '◆ handed off (link copied) → ',
+				bright: url,
+			});
 		} catch (e) {
 			dispatch({type: 'systemMsg', text: `handoff failed: ${errMsg(e)}`});
 		}

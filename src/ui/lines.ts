@@ -12,6 +12,8 @@ export interface Seg {
 	/** truecolor fg override (gradient cells — the price slider); `k` stays
 	 *  the ANSI fallback and the overlay-dim target */
 	hex?: string;
+	/** OSC 8 hyperlink target (clickable in supporting terminals) */
+	link?: string;
 }
 
 export const seg = (t: string, k?: Token, bg?: Bg): Seg => ({t, k, bg});
@@ -64,6 +66,7 @@ interface Unit {
 	ch: string;
 	k?: Token;
 	bg?: Bg;
+	link?: string;
 	w: number;
 }
 
@@ -71,7 +74,13 @@ function toUnits(segs: Seg[]): Unit[] {
 	const units: Unit[] = [];
 	for (const s of segs) {
 		for (const ch of s.t) {
-			units.push({ch, k: s.k, bg: s.bg, w: cpWidth(ch.codePointAt(0) ?? 0)});
+			units.push({
+				ch,
+				k: s.k,
+				bg: s.bg,
+				link: s.link,
+				w: cpWidth(ch.codePointAt(0) ?? 0),
+			});
 		}
 	}
 	return units;
@@ -81,8 +90,13 @@ function unitsToSegs(units: Unit[]): Seg[] {
 	const out: Seg[] = [];
 	for (const u of units) {
 		const last = out[out.length - 1];
-		if (last && last.k === u.k && last.bg === u.bg) last.t += u.ch;
-		else out.push({t: u.ch, k: u.k, bg: u.bg});
+		if (last && last.k === u.k && last.bg === u.bg && last.link === u.link) {
+			last.t += u.ch;
+		} else {
+			const s: Seg = {t: u.ch, k: u.k, bg: u.bg};
+			if (u.link) s.link = u.link;
+			out.push(s);
+		}
 	}
 	return out;
 }

@@ -716,7 +716,10 @@ function systemLines(
 	w: number,
 ): Seg[][] {
 	const segs = [seg('· ', 'faint'), seg(item.text, 'faint')];
-	if (item.bright) segs.push(seg(item.bright, 'bright'));
+	if (item.bright) {
+		const link = /^https?:\/\//.test(item.bright) ? item.bright : undefined;
+		segs.push({...seg(item.bright, 'bright'), link});
+	}
 	return [padSegs(truncSegs(segs, w), w)];
 }
 

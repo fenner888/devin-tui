@@ -1008,7 +1008,7 @@ export function statusBar(
 		? [
 				seg('update ', 'muted'),
 				seg(`v${s.updateAvailable}`, 'bright'),
-				seg(' · git pull', 'muted'),
+				seg(' · devin-tui update', 'muted'),
 				seg('   '),
 			]
 		: [];

@@ -437,7 +437,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		if (s.updateAvailable) {
 			dispatch({
 				type: 'systemMsg',
-				text: `update v${s.updateAvailable} available — git pull`,
+				text: `update v${s.updateAvailable} available — devin-tui update`,
 			});
 		}
 		if (s.turnStats.length > 0 || s.reportedCost) {

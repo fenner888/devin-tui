@@ -97,10 +97,11 @@ works — pricing just stays hidden.
 ## Updating
 
 ```sh
-cd devin-tui && git pull && npm install
+devin-tui update      # git pull --ff-only + npm install in the clone
 ```
 
-No re-link is needed — `devin-tui` on PATH points at the clone. The TUI
+(equivalent to `cd devin-tui && git pull && npm install`). Restart any
+running devin-tui afterwards. No re-link is needed — `devin-tui` on PATH points at the clone. The TUI
 shows a notice in the corner/status bar when a newer version is published
 (checked at most once per 24 h, cached in `~/.cache/devin-tui/`); set
 `DEVIN_TUI_NO_UPDATE_CHECK=1` to disable it.

@@ -105,6 +105,9 @@ on a boot error).
   `session-config.json` and `config-updates.jsonl` in the same directory.
   They contain session content (file contents, command output), so they
   are debug-only; authenticate payloads are never written anywhere.
+- **`devin-tui update`** — handled by `bin/devin-tui.sh` before the TUI
+  starts: `git pull --ff-only` + `npm install` in the clone the launcher
+  resolves to, then prints the new version; exits non-zero on failure.
 - **Update check** (`src/update.ts`) — fire-and-forget after mount,
   never blocks startup. Local version = `package.json` `version` (read
   via `import.meta.url`); remote = `GET
@@ -149,7 +152,7 @@ A vertically + horizontally centered column:
 
 1. The 2× braille mark (with shimmer).
 2. `Devin` bold bright + ` TUI` muted; below, muted
-   `v0.2.0 · <agentInfo.title once known>`.
+   `v0.2.1 · <agentInfo.title once known>`.
 3. The input panel (composer), width `min(78, cols-8)` — a rounded bezel
    frame `╭─…─╮` / `│ … │` / `╰─…─╯` drawn in `bezel*` tokens on the screen
    `bg`, with `panel` bg inside and 1 col of horizontal padding. Content
@@ -185,8 +188,8 @@ A vertically + horizontally centered column:
    `● Tip  <key> <text>` (● / Tip / key bright, rest muted) cycling ~5 tips
    every ~10s.
 6. Corners: bottom-left `~cwd` muted + ` (<branch>)` faint (omitted
-   outside a git repo), bottom-right `v0.2.0` faint — plus ` · update `
-   muted + `v<latest>` bright + ` available — git pull` muted when an
+   outside a git repo), bottom-right `v0.2.1` faint — plus ` · update `
+   muted + `v<latest>` bright + ` available — devin-tui update` muted when an
    update check found a newer version — inset 2 cols on
    both sides and placed at `rows-3` (two blank rows below), matching
    the session status bar's position.
@@ -539,7 +542,7 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   labels muted). The bar keeps a 2-col inset on each side and at least a
   3-col gap between the left and right groups. When
   `updateAvailable` is set the right side gains a
-  leading `update v<latest> · git pull` seg (name muted, version bright) —
+  leading `update v<latest> · devin-tui update` seg (name muted, version bright) —
   it is the FIRST thing dropped under width pressure, then `ctrl+o`, then the rest
   of the key hints, then turns/tools, then the session title, then the
   branch, then the cwd collapses to its basename (never dropped) — the
@@ -563,7 +566,7 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   home in `needsAuth`; a method-not-found error shows a system line),
   `/status` (system line `signed in|signed out · <agentTitle> · session
   <short id|—> · log <path>`, plus a second system line `update v<latest>
-  available — git pull` when an update is known — separate so it never
+  available — devin-tui update` when an update is known — separate so it never
   gets clipped by the 110-col content width; plus, when any spend data
   exists, `spend $0.04 · 3 turns · in 10.5k · cached 10.6k · out 46`
   — `fmtTokens` compacts the counts — with ` · <n> turn(s) on unpriced

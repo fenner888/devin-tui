@@ -90,6 +90,9 @@ on a boot error).
 - Enter alternate screen (`\x1b[?1049h`) + hide cursor on start; ALWAYS
   restore on exit/crash/SIGINT/SIGTERM (`process.on('exit')` backstop). Kill
   the agent child on exit.
+- Ink renders with `incrementalRendering` — only changed rows are
+  rewritten, so the blinking caret doesn't repaint the whole screen and
+  wipe the user's mouse selection (copy/paste of transcript text).
 - Agent stderr → append to `$TMPDIR/devin-tui/devin-acp.log`, never the
   terminal; at startup a log over 5 MB is rotated to `devin-acp.log.1`
   (overwriting the old one). `_cognition.ai/output` ext notifications
@@ -633,7 +636,10 @@ locally, mirroring the open-source `devin-handoff.sh` `create` exactly
   <slug|none> · branch <b|none> · diff <n> KB · context <n> KB` and
   `task: <task>`, hint `↵ confirm · esc cancel`. Enter POSTs; Esc cancels.
   Blocked while `working` (existing notice).
-- Success → system line `· ◆ handed off → <url>` (url bright); failure →
+- Success → system line `· ◆ handed off (link copied) → <url>` (url
+  bright, emitted as an OSC 8 hyperlink so it is cmd/ctrl-clickable) and
+  the url is copied to the clipboard (OSC 52 + `pbcopy` / `wl-copy` /
+  `xclip` / `clip` best-effort); failure →
   `handoff failed: <HTTP status + server detail | network error>` (the
   key never appears in messages). The same line covers prepare errors
   (git/context gather) — a failed `prepareHandoff` is caught and

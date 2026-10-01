@@ -29,7 +29,7 @@ function parseArgs(argv: string[]): CliArgs {
 			args.resume = argv[++i] ?? '';
 		} else if (a === '--help' || a === '-h') {
 			process.stderr.write(
-				'usage: devin-tui [--cwd <dir>] [--model <name>] [--agent "<cmd>"] [-c|--continue] [-r|--resume <id>]\n',
+				'usage: devin-tui [update] [--cwd <dir>] [--model <name>] [--agent "<cmd>"] [-c|--continue] [-r|--resume <id>]\n',
 			);
 			process.exit(0);
 		}

@@ -314,7 +314,7 @@ export function homeLines(
 			? [
 					seg(' · update ', 'muted'),
 					seg(`v${s.updateAvailable}`, 'bright'),
-					seg(' available — git pull', 'muted'),
+					seg(' available — devin-tui update', 'muted'),
 				]
 			: []),
 		seg('  '),

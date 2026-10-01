@@ -72,6 +72,7 @@ import {
 	sendHandoff,
 } from '../handoff.js';
 import {copyToClipboard} from '../clipboard.js';
+import {mouseDefault, parseMouse, setMouseReporting} from '../mouse.js';
 import type {Seg} from './lines.js';
 
 function errMsg(e: unknown): string {
@@ -98,6 +99,7 @@ const LOCAL_COMMANDS: SlashCommand[] = [
 	{name: 'status', description: 'show session status', local: true},
 	{name: 'clear', description: 'start a fresh session', local: true},
 	{name: 'sidebar', description: 'toggle the plan block', local: true},
+	{name: 'mouse', description: 'toggle mouse-wheel scrolling', local: true},
 	{name: 'help', description: 'show commands and keys', local: true},
 	{name: 'exit', description: 'exit devin-tui', local: true},
 	{name: 'quit', description: 'exit devin-tui', local: true},
@@ -116,6 +118,7 @@ export const HELP_KEYS: readonly {key: string; desc: string}[] = [
 	{key: 'shift+tab', desc: 'cycle mode'},
 	{key: 'pgup/pgdn', desc: 'scroll transcript'},
 	{key: 'shift+↑/↓', desc: 'scroll one line'},
+	{key: 'mouse wheel', desc: 'scroll transcript (/mouse toggles)'},
 	{key: '↑/↓', desc: 'cursor line / prompt history'},
 	{key: '/', desc: 'slash commands'},
 	{key: 'ctrl+c ctrl+c', desc: 'quit'},
@@ -149,6 +152,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	const [paletteSel, setPaletteSel] = useState(0);
 	const [permSel, setPermSel] = useState(0);
 	const [scrollOffset, setScrollOffset] = useState(0);
+	const mouseOn = useRef(mouseDefault());
 	const [panelOpen, setPanelOpen] = useState(false);
 	const [panelQuery, setPanelQuery] = useState('');
 	const [panelSel, setPanelSel] = useState(0);
@@ -900,6 +904,18 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				onQuit();
 				return;
 			}
+			if (t === '/mouse') {
+				mouseOn.current = !mouseOn.current;
+				setMouseReporting(mouseOn.current);
+				dispatch({
+					type: 'systemMsg',
+					text: mouseOn.current
+						? 'mouse wheel scrolling on — hold shift (option in iTerm2) to select text'
+						: 'mouse wheel scrolling off — click-and-drag selects text',
+				});
+				setPrompt({value: '', cursor: 0});
+				return;
+			}
 			if (t === '/sidebar') {
 				dispatch({type: 'toggleSidebar'});
 				setPrompt({value: '', cursor: 0});
@@ -1187,6 +1203,12 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 
 	useInput((input, key) => {
 		const s = stateRef.current;
+		const wheel = parseMouse(input);
+		if (wheel !== undefined) {
+			if (wheel === 'up') setScrollOffset(o => o + 3);
+			else if (wheel === 'down') setScrollOffset(o => Math.max(0, o - 3));
+			return;
+		}
 		const isCtrlC = (key.ctrl && input === 'c') || input === '\x03';
 		if (isCtrlC) {
 			const now = Date.now();

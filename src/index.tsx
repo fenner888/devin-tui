@@ -4,6 +4,7 @@ import React from 'react';
 import {render} from 'ink';
 import {App} from './ui/App.js';
 import {defaultLogFile, type AgentConn} from './acp/connection.js';
+import {MOUSE_OFF, MOUSE_ON, mouseDefault} from './mouse.js';
 
 interface CliArgs {
 	cwd: string;
@@ -38,7 +39,7 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 const ENTER_ALT = '\x1b[?1049h\x1b[?25l\x1b]0;devin-tui\x07';
-const LEAVE_ALT = '\x1b[?25h\x1b[?1049l\x1b]0;devin-tui\x07';
+const LEAVE_ALT = MOUSE_OFF + '\x1b[?25h\x1b[?1049l\x1b]0;devin-tui\x07';
 
 function main(): void {
 	const args = parseArgs(process.argv.slice(2));
@@ -62,7 +63,7 @@ function main(): void {
 		}
 	};
 
-	process.stdout.write(ENTER_ALT);
+	process.stdout.write(ENTER_ALT + (mouseDefault() ? MOUSE_ON : ''));
 
 	const inst = render(
 		<App

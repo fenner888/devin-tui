@@ -566,37 +566,67 @@ export function handoffBlock(h: HandoffInfo, w: number): Seg[][] {
 
 // ---- slash dropdown --------------------------------------------------------
 
+/** Scrolling-window top for a dropdown of `n` items showing `max` rows:
+ *  keeps the selection inside the window — sel above pulls the window
+ *  up, sel below pushes it down — clamped to [0, n - max]. Wrapping
+ *  last→first gives top 0, first→last gives n - max. */
+export function menuWindow(
+	n: number,
+	sel: number,
+	prevTop: number,
+	max = 8,
+): number {
+	let top = prevTop;
+	if (sel < top) top = sel;
+	else if (sel >= top + max) top = sel - max + 1;
+	return Math.max(0, Math.min(top, Math.max(0, n - max)));
+}
+
 /** Two-column dropdown shown above the input panel —
- *  `/` commands or `@` file mentions (prefix). */
+ *  `/` commands or `@` file mentions (prefix). Renders the window
+ *  items[top .. top+8); `↑`/`↓` edge markers indicate off-screen items. */
 export function slashMenuBlock(
 	items: {name: string; description?: string}[],
 	sel: number,
 	w: number,
 	prefix = '/',
+	top = 0,
+	max = 8,
 ): Seg[][] {
-	const shown = items.slice(0, 8);
+	const shown = items.slice(top, top + max);
+	// width across ALL items so the column doesn't jump while scrolling
 	const nameW = Math.min(
 		18,
-		Math.max(6, ...shown.map(i => strWidth(i.name) + 2)),
+		Math.max(6, ...items.map(i => strWidth(i.name) + 2)),
 	);
 	return shown.map((item, i) => {
-		const selected = i === sel;
+		const idx = top + i;
+		const selected = idx === sel;
 		const name = `${prefix}${item.name}`;
 		const rowSegs: Seg[] = [
 			seg(' ', 'plain', 'overlay'),
 			seg(name + ' '.repeat(Math.max(1, nameW - strWidth(name))), 'bright', 'overlay'),
 			...truncSegs(
 				[seg(item.description ?? '', 'muted', 'overlay')],
-				Math.max(0, w - nameW - 2),
+				Math.max(0, w - nameW - 3),
 			),
 		];
-		return padSegs(
+		const bg = selected ? 'sel' : 'overlay';
+		const body = padSegs(
 			selected
 				? rowSegs.map(s => ({...s, k: 'sel' as const, bg: 'sel' as const}))
 				: rowSegs,
-			w,
-			selected ? 'sel' : 'overlay',
+			w - 2,
+			bg,
 		);
+		// right-edge scroll markers; the 2 cols are reserved on every row
+		const edge =
+			i === 0 && top > 0
+				? seg(' ↑', 'faint', bg)
+				: i === shown.length - 1 && top + shown.length < items.length
+					? seg(' ↓', 'faint', bg)
+					: seg('  ', 'plain', bg);
+		return [...body, edge];
 	});
 }
 

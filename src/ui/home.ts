@@ -48,6 +48,7 @@ export interface HomeUI {
 	resume?: ResumeView;
 	paletteSel: number;
 	slashItems: {name: string; description?: string}[];
+	slashTop: number; // dropdown window top (scrolls to keep sel visible)
 	slashOpen: boolean;
 	mentionItems: {name: string}[];
 	mentionOpen: boolean;
@@ -241,7 +242,7 @@ export function homeLines(
 	})();
 	const slashRows =
 		ui.slashOpen && s.status !== 'needsAuth'
-			? slashMenuBlock(ui.slashItems, ui.paletteSel, w)
+			? slashMenuBlock(ui.slashItems, ui.paletteSel, w, '/', ui.slashTop)
 			: ui.mentionOpen && s.status !== 'needsAuth'
 				? slashMenuBlock(ui.mentionItems, ui.mentionSel, w, '@')
 				: [];

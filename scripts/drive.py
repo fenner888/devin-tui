@@ -697,6 +697,41 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # slash dropdown scrolling: / then 10x down (selection leaves the
+    # 8-row window -> ↑/↓ markers), 10x up (window back to top), one
+    # more up wraps to the last item (final 8 rows, no ↓)
+    "slashscroll": [
+        (6.0, b"\r"),             # needsAuth -> auth -> home
+        (1.5, b"/"),              # open the slash dropdown
+        (0.5, b"\x1b[B"),         # ↓ x10 -> selection 10
+        (0.15, b"\x1b[B"),
+        (0.15, b"\x1b[B"),
+        (0.15, b"\x1b[B"),
+        (0.15, b"\x1b[B"),
+        (0.15, b"\x1b[B"),
+        (0.15, b"\x1b[B"),
+        (0.15, b"\x1b[B"),
+        (0.15, b"\x1b[B"),
+        (0.15, b"\x1b[B"),
+        (2.5, b""),               # frame A: sel below fold, ↑ + ↓ shown
+        (0.5, b"\x1b[A"),         # ↑ x10 -> back to the top of the list
+        (0.15, b"\x1b[A"),
+        (0.15, b"\x1b[A"),
+        (0.15, b"\x1b[A"),
+        (0.15, b"\x1b[A"),
+        (0.15, b"\x1b[A"),
+        (0.15, b"\x1b[A"),
+        (0.15, b"\x1b[A"),
+        (0.15, b"\x1b[A"),
+        (0.15, b"\x1b[A"),
+        (2.0, b""),               # frame B: top window, no ↑
+        (0.5, b"\x1b[A"),         # ↑ once -> wrap to the last item
+        (2.0, b""),               # frame C: final 8 rows, no ↓
+        (0.5, b"\x1b"),           # esc clears the input
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
 }
 
 

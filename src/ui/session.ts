@@ -37,6 +37,7 @@ export interface SessionUI {
 	scrollOffset: number;
 	paletteSel: number;
 	slashItems: {name: string; description?: string}[];
+	slashTop: number; // dropdown window top (scrolls to keep sel visible)
 	slashOpen: boolean;
 	mentionItems: {name: string}[]; // @file dropdown rows
 	mentionOpen: boolean;
@@ -80,7 +81,7 @@ export function sessionLines(
 	// the input panel while the plan gets a blank-row gap on both sides
 	const plan = s.sidebar ? planLines(s, w, ui.tick) : [];
 	const dropdown = ui.slashOpen
-		? slashMenuBlock(ui.slashItems, ui.paletteSel, w)
+		? slashMenuBlock(ui.slashItems, ui.paletteSel, w, '/', ui.slashTop)
 		: ui.mentionOpen
 			? slashMenuBlock(ui.mentionItems, ui.mentionSel, w, '@')
 			: [];

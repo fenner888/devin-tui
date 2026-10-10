@@ -834,9 +834,12 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
 - **Slash dropdown**: typing `/` at the start of input opens a two-column
   dropdown directly above the input panel (`/name` bright padded,
   description muted), `overlay` bg, selected row full-width selection
-  colors, max 8 rows. ↑↓ select, Tab/Enter complete, Esc closes. The same
-  block with an `@` prefix hosts the file-mention dropdown (see Composer
-  / input).
+  colors. It shows a scrolling window of at most 8 rows (`menuWindow`
+  tracks the top; the name column width is computed over all matches so
+  it doesn't jump while scrolling); a faint `↑`/`↓` on the first/last
+  visible row marks off-screen items (the 2 cols are reserved on every
+  row). ↑↓ select, Tab/Enter complete, Esc closes. The same block with an
+  `@` prefix hosts the file-mention dropdown (see Composer / input).
 - **Permission**: there is no permission overlay — requests render inline
   in the transcript under their tool call (see Session screen → Inline
   permission). The dimmed-backdrop overlay style is used only by the

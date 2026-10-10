@@ -72,6 +72,7 @@ import {
 	filterPanelItems,
 	helpBlock,
 	helpEntries,
+	menuWindow,
 	panelItems,
 	settingsBlock,
 	SETTINGS_ROWS,
@@ -251,6 +252,8 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	const promptRef = useRef(prompt);
 	promptRef.current = prompt;
 	const [paletteSel, setPaletteSel] = useState(0);
+	/** slash dropdown window top — updated during render via menuWindow */
+	const slashTop = useRef(0);
 	const [permSel, setPermSel] = useState(0);
 	const [scrollOffset, setScrollOffset] = useState(0);
 	// /settings + /theme overlays
@@ -2151,9 +2154,16 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		filter !== null
 			? allCommands
 					.filter(c => c.name.startsWith(filter))
-					.slice(0, 8)
 					.map(c => ({name: c.name, description: c.description}))
 			: [];
+	// dropdown window top — scrolls so the selection stays inside the
+	// 8 visible rows; paletteSel resets to 0 on any filter edit, which
+	// pulls the window back to the top via menuWindow
+	slashTop.current = menuWindow(
+		slashItems.length,
+		paletteSel,
+		slashTop.current,
+	);
 
 	// attachment chips: ⌗ per resolved @file mention, ▣ per image
 	const chips = [
@@ -2193,6 +2203,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				resume: resumeView ?? undefined,
 				paletteSel,
 				slashItems,
+				slashTop: slashTop.current,
 				slashOpen: filter !== null && slashItems.length > 0,
 				mentionItems,
 				mentionOpen,
@@ -2215,6 +2226,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				scrollOffset,
 				paletteSel,
 				slashItems,
+				slashTop: slashTop.current,
 				slashOpen: filter !== null && slashItems.length > 0,
 				mentionItems,
 				mentionOpen,

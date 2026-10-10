@@ -10,7 +10,8 @@
   "scripts": {
     "start": "tsx src/index.tsx",
     "typecheck": "tsc --noEmit",
-    "fake-agent": "tsx test/fake-agent.ts"
+    "fake-agent": "tsx test/fake-agent.ts",
+    "test": "tsx --test test/*.test.ts"
   },
   "engines": {
     "node": ">=22"

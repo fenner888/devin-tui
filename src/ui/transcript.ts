@@ -39,7 +39,7 @@ function fmtElapsed(ms: number): string {
 // ---- transcript items ------------------------------------------------------
 
 /** User message: panel-shaded block; first line prefixed `❯ ` muted. */
-function userLines(item: {text: string}, w: number): Seg[][] {
+export function userLines(item: {text: string}, w: number): Seg[][] {
 	const text = item.text.replace(/\n+/g, ' ');
 	const rows: Seg[][] = [blankLine(w, 'panel')];
 	for (const [i, l] of wrapSegs(
@@ -55,7 +55,7 @@ function userLines(item: {text: string}, w: number): Seg[][] {
 }
 
 /** Agent message: plain text on bg; fenced code on panel bg with a │ gutter. */
-function agentLines(item: {text: string}, w: number, cursor: boolean): Seg[][] {
+export function agentLines(item: {text: string}, w: number, cursor: boolean): Seg[][] {
 	const md = renderMarkdown(item.text);
 	// trim leading/trailing blank lines so the block hugs its content
 	while (md.length > 0 && segsWidth(md[md.length - 1].segs) === 0) md.pop();
@@ -287,7 +287,7 @@ function diffStats(item: ToolItem): {add: number; del: number} | undefined {
 /** Expand tabs and drop control bytes: cpWidth counts C0 chars 0 but a
  *  real terminal jumps 8 cols on \t (and acts on escape bytes), so raw
  *  tool text would overflow/wrap its row. Newlines are preserved. */
-function cleanText(s: string): string {
+export function cleanText(s: string): string {
 	let out = '';
 	let col = 0;
 	for (const ch of s) {
@@ -436,7 +436,12 @@ function execCmdLine(item: ToolItem, room: number, alt?: string): Seg[] {
 	return truncSegs([seg('$ ', 'muted'), ...cmdSegs(cmd)], room);
 }
 
-function execBody(item: ToolItem, room: number, alt?: string): Seg[][] {
+function execBody(
+	item: ToolItem,
+	room: number,
+	alt?: string,
+	full = false,
+): Seg[][] {
 	const rows: Seg[][] = [];
 	const cmdLine = execCmdLine(item, room, alt);
 	if (cmdLine.length > 0) rows.push(cmdLine);
@@ -444,9 +449,15 @@ function execBody(item: ToolItem, room: number, alt?: string): Seg[][] {
 	const failed = item.status === 'failed';
 	if (out) {
 		const lines = out.replace(/\n+$/, '').split('\n');
-		const max = failed ? 3 : 10;
+		const max = full ? lines.length : failed ? 3 : 10;
 		for (const l of lines.slice(0, max)) {
-			rows.push([seg(fitStr(l, room), failed ? 'err' : 'faint')]);
+			const tok = failed ? 'err' : 'faint';
+			if (full) {
+				// focus view: wrap long lines instead of …-truncating
+				for (const wl of wrapSegs([seg(l, tok)], room)) rows.push(wl);
+			} else {
+				rows.push([seg(fitStr(l, room), tok)]);
+			}
 		}
 		if (lines.length > max) {
 			rows.push([seg(`… ${lines.length - max} more lines`, 'faint')]);
@@ -476,26 +487,31 @@ function diffRow(
 }
 
 const DIFF_MAX_CHANGED = 12;
+const DIFF_MAX_CHANGED_FULL = Infinity;
+const DIFF_TOO_BIG_FULL = 5000;
 
-function editBody(item: ToolItem, room: number): Seg[][] {
+function editBody(item: ToolItem, room: number, full = false): Seg[][] {
 	const rows: Seg[][] = [];
+	const maxChanged = full ? DIFF_MAX_CHANGED_FULL : DIFF_MAX_CHANGED;
+	const tooBig = full ? DIFF_TOO_BIG_FULL : DIFF_TOO_BIG;
 	for (const d of diffsOf(item)) {
 		if (d.oldText == null) {
-			// new file — first 8 lines as +
+			// new file — first 8 lines as + (all of them in focus view)
 			const lines = d.newText.split('\n');
-			lines.slice(0, 8).forEach((l, i) => {
+			const max = full ? lines.length : 8;
+			lines.slice(0, max).forEach((l, i) => {
 				rows.push(diffRow(String(i + 1), `+ ${l}`, 'ok', 'diffAdd', room));
 			});
-			if (lines.length > 8) {
+			if (lines.length > max) {
 				rows.push(
-					diffRow('', `… ${lines.length - 8} more lines`, 'faint', undefined, room),
+					diffRow('', `… ${lines.length - max} more lines`, 'faint', undefined, room),
 				);
 			}
 			continue;
 		}
 		const a = d.oldText.split('\n');
 		const b = d.newText.split('\n');
-		if (a.length > DIFF_TOO_BIG || b.length > DIFF_TOO_BIG) {
+		if (a.length > tooBig || b.length > tooBig) {
 			rows.push(
 				diffRow('', `+${b.length} −${a.length} (large diff)`, 'faint', undefined, room),
 			);
@@ -515,7 +531,7 @@ function editBody(item: ToolItem, room: number): Seg[][] {
 				);
 				continue;
 			}
-			if (shown >= DIFF_MAX_CHANGED) {
+			if (shown >= maxChanged) {
 				hidden++;
 				continue;
 			}
@@ -536,15 +552,16 @@ function editBody(item: ToolItem, room: number): Seg[][] {
 }
 
 /** ≤3 text lines for read/search/fetch/other (err-red when failed). */
-function textBody(item: ToolItem, room: number): Seg[][] {
+function textBody(item: ToolItem, room: number, full = false): Seg[][] {
 	const out = outputText(item);
 	if (!out) return [];
 	const failed = item.status === 'failed';
-	return out
-		.replace(/\n+$/, '')
-		.split('\n')
-		.slice(0, 3)
-		.map(l => [seg(fitStr(l, room), failed ? 'err' : 'faint')]);
+	const tok = failed ? 'err' : 'faint';
+	const lines = out.replace(/\n+$/, '').split('\n');
+	if (full) {
+		return lines.flatMap(l => wrapSegs([seg(l, tok)], room));
+	}
+	return lines.slice(0, 3).map(l => [seg(fitStr(l, room), tok)]);
 }
 
 /** A completed non-execute tool whose output is a single short line
@@ -602,11 +619,12 @@ function execCollapsed(
  * pending permission expands them); while running they show just the
  * `$ command` line.
  */
-function toolBlock(
+export function toolBlock(
 	item: ToolItem,
 	s: State,
 	w: number,
 	tick: number,
+	full = false,
 ): Seg[][] {
 	const kind = String(item.toolKind);
 	const running = isRunning(item.status);
@@ -637,10 +655,10 @@ function toolBlock(
 		const permOpen = s.permission?.toolCallId === item.toolCallId;
 		const permCmd = permOpen ? s.permission?.editableCommand : undefined;
 		const expanded = s.expandTools || permOpen;
-		if (!running && !expanded) {
+		if (!running && !expanded && !full) {
 			return [padSegs(truncSegs(execCollapsed(item, head, w, permCmd), w), w)];
 		}
-		if (running && !permOpen) {
+		if (running && !permOpen && !full) {
 			// compact while running: header + $ line, no output
 			const rows = [padSegs(truncSegs(head, w), w)];
 			const cmdLine = execCmdLine(item, room, permCmd);
@@ -651,7 +669,7 @@ function toolBlock(
 		}
 		head.push(seg(' ▾', 'faint'));
 		const rows: Seg[][] = [padSegs(truncSegs(head, w), w)];
-		execBody(item, room, permCmd).forEach((b, i, body) => {
+		execBody(item, room, permCmd, full).forEach((b, i, body) => {
 			const last = !running && i === body.length - 1;
 			rows.push(
 				padSegs([seg(' '), seg(last ? '╰ ' : '│ ', 'rule'), ...b], w),
@@ -663,10 +681,10 @@ function toolBlock(
 	const rows: Seg[][] = [padSegs(truncSegs(head, w), w)];
 	const body =
 		kind === 'edit'
-			? editBody(item, room)
+			? editBody(item, room, full)
 			: short
 				? []
-				: textBody(item, room);
+				: textBody(item, room, full);
 	body.forEach((b, i) => {
 		const last = !running && i === body.length - 1;
 		rows.push(
@@ -711,7 +729,7 @@ export function permissionRows(
 	return rows;
 }
 
-function systemLines(
+export function systemLines(
 	item: {text: string; bright?: string},
 	w: number,
 ): Seg[][] {
@@ -723,20 +741,26 @@ function systemLines(
 	return [padSegs(truncSegs(segs, w), w)];
 }
 
-/** All items → padded line list (blank row between items). The pending
- *  permission prompt is inlined under its tool call (or at the bottom if
- *  the tool isn't in the transcript); queued prompts and the live activity
- *  row pin to the bottom while a turn runs. */
-export function transcriptLines(
+/** All items → padded line list plus the row ranges each item occupies
+ *  (item rows only — blank separators, inline permission rows, queued
+ *  prompts and the activity row map to nothing). */
+export interface TranscriptLayout {
+	lines: Seg[][];
+	spans: {id: string; start: number; end: number}[];
+}
+
+export function transcriptLayout(
 	s: State,
 	w: number,
 	tick: number,
 	permSel = 0,
-): Seg[][] {
+): TranscriptLayout {
 	const out: Seg[][] = [];
+	const spans: TranscriptLayout['spans'] = [];
 	let permPlaced = false;
 	s.items.forEach((it, i) => {
 		if (out.length > 0) out.push(blankLine(w));
+		const start = out.length;
 		if (it.kind === 'user') out.push(...userLines(it, w));
 		else if (it.kind === 'agent') {
 			const last = i === s.items.length - 1;
@@ -744,13 +768,17 @@ export function transcriptLines(
 				...agentLines(it, w, last && it.streaming && s.status === 'working'),
 			);
 		} else if (it.kind === 'thought') out.push(...thoughtLines(it, w));
-		else if (it.kind === 'tool') {
-			out.push(...toolBlock(it, s, w, tick));
-			if (s.permission && s.permission.toolCallId === it.toolCallId) {
-				out.push(...permissionRows(s.permission, permSel, w));
-				permPlaced = true;
-			}
-		} else out.push(...systemLines(it, w));
+		else if (it.kind === 'tool') out.push(...toolBlock(it, s, w, tick));
+		else out.push(...systemLines(it, w));
+		spans.push({id: it.id, start, end: out.length});
+		if (
+			it.kind === 'tool' &&
+			s.permission &&
+			s.permission.toolCallId === it.toolCallId
+		) {
+			out.push(...permissionRows(s.permission, permSel, w));
+			permPlaced = true;
+		}
 	});
 	if (s.permission && !permPlaced) {
 		if (out.length > 0) out.push(blankLine(w));
@@ -790,7 +818,60 @@ export function transcriptLines(
 		if (out.length > 0) out.push(blankLine(w));
 		out.push(activityLine(s, w, tick));
 	}
-	return out;
+	return {lines: out, spans};
+}
+
+/** The transcript's padded line list (blank row between items). The
+ *  pending permission prompt is inlined under its tool call (or at the
+ *  bottom if the tool isn't in the transcript); queued prompts and the
+ *  live activity row pin to the bottom while a turn runs. */
+export function transcriptLines(
+	s: State,
+	w: number,
+	tick: number,
+	permSel = 0,
+): Seg[][] {
+	return transcriptLayout(s, w, tick, permSel).lines;
+}
+
+/** Plain-text copy of one transcript item (focus view `c`). */
+export function itemPlainText(item: TranscriptItem, cwd: string): string {
+	if (item.kind === 'user' || item.kind === 'agent' || item.kind === 'thought') {
+		return item.text;
+	}
+	if (item.kind === 'system') return item.text;
+	if (String(item.toolKind) === 'execute') {
+		const cmd = execCommand(item) ?? '';
+		const out = outputText(item) ?? '';
+		return `$ ${cmd}\n${out}`.replace(/\n+$/, '\n');
+	}
+	if (String(item.toolKind) === 'edit') {
+		const parts: string[] = [];
+		for (const d of diffsOf(item)) {
+			parts.push(`--- ${relPath(d.path ?? '', cwd)}`);
+			const a = (d.oldText ?? '').split('\n');
+			const b = d.newText.split('\n');
+			if (d.oldText == null) {
+				for (const l of b) parts.push(`+ ${l}`);
+				continue;
+			}
+			if (a.length > DIFF_TOO_BIG_FULL || b.length > DIFF_TOO_BIG_FULL) {
+				parts.push(`+${b.length} −${a.length} (large diff)`);
+				continue;
+			}
+			for (const op of lineDiff(a, b)) {
+				parts.push(
+					op.type === 'del'
+						? `- ${op.text}`
+						: op.type === 'add'
+							? `+ ${op.text}`
+							: `  ${op.text}`,
+				);
+			}
+		}
+		if (parts.length > 0) return parts.join('\n');
+	}
+	return outputText(item) ?? toolOneLiner(item, item.toolCwd ?? cwd);
 }
 
 /** Live activity row pinned to the bottom of the transcript while a turn

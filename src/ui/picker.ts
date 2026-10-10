@@ -3,6 +3,8 @@ import {configGroups, configValues} from '../state/store.js';
 import {levelRank, levelsFor} from '../catalog.js';
 import type {CatalogState, ModelCatalog} from '../catalog.js';
 import type {Token} from '../theme.js';
+import {fgHex} from '../theme.js';
+import {hexToRgb} from '../themes.js';
 import {padSegs, seg, segsWidth, strWidth, truncSegs, type Seg} from './lines.js';
 import {shortCwd} from './panel.js';
 
@@ -286,13 +288,14 @@ function pickerShell(spec: ShellSpec): Seg[][] {
 
 const SLIDER_W = 30;
 
-// green → yellow → orange → purple, RGB-interpolated per cell; the token
-// is the nearest stop (ANSI fallback), `hex` the truecolor gradient color
-const STOPS: {t: number; rgb: [number, number, number]; tok: Token}[] = [
-	{t: 0.0, rgb: [0x3d, 0xdc, 0x84], tok: 'pkGreen'},
-	{t: 0.4, rgb: [0xe6, 0xd1, 0x7a], tok: 'pkYellow'},
-	{t: 0.7, rgb: [0xe5, 0xa0, 0x7a], tok: 'pkOrange'},
-	{t: 1.0, rgb: [0xb4, 0x8e, 0xad], tok: 'pkPurple'},
+// green → yellow → orange → purple, RGB-interpolated per cell from the
+// active theme's slider tokens; the token is the nearest stop (ANSI
+// fallback), `hex` the truecolor gradient color
+const STOPS: {t: number; tok: Token}[] = [
+	{t: 0.0, tok: 'pkGreen'},
+	{t: 0.4, tok: 'pkYellow'},
+	{t: 0.7, tok: 'pkOrange'},
+	{t: 1.0, tok: 'pkPurple'},
 ];
 
 function gradAt(t: number): {hex: string; tok: Token} {
@@ -301,17 +304,19 @@ function gradAt(t: number): {hex: string; tok: Token} {
 			const a = STOPS[i - 1];
 			const b = STOPS[i];
 			const f = (t - a.t) / (b.t - a.t);
-			const mix = a.rgb.map((v, j) =>
-				Math.round(v + (b.rgb[j] - v) * f),
-			);
+			const ah = fgHex(a.tok) ?? '#7a7a7a';
+			const bh = fgHex(b.tok) ?? '#7a7a7a';
+			const ar = hexToRgb(ah);
+			const br = hexToRgb(bh);
+			const mixc = ar.map((v, j) => Math.round(v + (br[j] - v) * f));
 			return {
-				hex: `#${mix.map(v => v.toString(16).padStart(2, '0')).join('')}`,
+				hex: `#${mixc.map(v => v.toString(16).padStart(2, '0')).join('')}`,
 				tok: f < 0.5 ? a.tok : b.tok,
 			};
 		}
 	}
 	const last = STOPS[STOPS.length - 1];
-	return {hex: '#b48ead', tok: last.tok};
+	return {hex: fgHex(last.tok) ?? '#b48ead', tok: last.tok};
 }
 
 /** Three text columns spread across `span` cells: left/center/right. */

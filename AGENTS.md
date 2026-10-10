@@ -56,18 +56,14 @@ npx tsx scripts/check-real-devin.ts
 
 ## Design rules — do not break these
 
-- **Grayscale only.** All styling goes through the named tokens in
-  `src/theme.ts` — a black-and-white palette where depth comes from gray
-  background shades, never hue. Never pass `color=` or `backgroundColor=`
-  to Ink components; only `theme.ts` maps tokens to styles. Truecolor
-  backgrounds/hex foregrounds apply only when `COLORTERM` is
-  `truecolor`/`24bit`; otherwise the UI falls back to bold/dim/inverse
-  (picker → ANSI blue/inverse; status hues → ANSI green/red/blue/yellow).
-  Hue is allowed ONLY for: the `picker` palette (`pk*` tokens, matching
-  the Devin CLI `/model` picker's blue), success/fail tool dots
-  (`ok`/`err`), diff `+`/`−` lines and stats (`diffAdd`/`diffDel` bgs),
-  `$ command` highlighting (`cmdFlag`/`cmdString`), and the yellow
-  `bypass permissions on` composer tag (`pkYellow`).
+- **Themes, tokens only.** All styling goes through named tokens resolved
+  from the active theme in `src/theme.ts` / `src/themes.ts`; never pass
+  `color=`/`backgroundColor=` to Ink. The default theme 'devin' is
+  grayscale. Hue appears only in the existing hue roles (picker accent,
+  ok/err dots and diff lines, $ command highlighting, bypass tag); themes
+  recolor tokens and neutrals, they don't add new hue roles.
+  Non-truecolor terminals fall back to MONO and ignore
+  themes/backgrounds.
 - **Config capture is debug-only.** Protocol captures
   (`session-updates.jsonl`, `session-config.json`, `config-updates.jsonl`
   in `$TMPDIR/devin-tui/` — they contain session content) are written only
@@ -96,4 +92,10 @@ npx tsx scripts/check-real-devin.ts
   update check (`src/update.ts` → raw.githubusercontent.com for this repo's
   package.json, cached 24 h, `DEVIN_TUI_NO_UPDATE_CHECK=1` to disable,
   skipped for `--agent` runs unless `DEVIN_TUI_FORCE_UPDATE_CHECK=1`).
+- **Settings** live in `$XDG_CONFIG_HOME/devin-tui/config.json`
+  (`~/.config/devin-tui/` by default) — `src/settings.ts`, written
+  atomically and only once the user changes a setting. Custom themes are
+  `<configdir>/themes/*.json`. Env overrides (win over the file, never
+  saved): `DEVIN_TUI_THEME=<id>`, `DEVIN_TUI_REDUCED_MOTION=1`,
+  `DEVIN_TUI_NO_MOUSE=1`.
 - Don't commit `.snapshots/` expectations into code; snapshots are artifacts.

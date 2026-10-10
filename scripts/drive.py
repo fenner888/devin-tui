@@ -19,6 +19,14 @@ import time
 
 ESC = b"\x1b"
 
+
+def _click_bytes() -> bytes:
+    """SGR click bytes — DRIVE_CLICK=x,y (1-based terminal coords)."""
+    spec = os.environ.get("DRIVE_CLICK", "60;18")
+    x, y = (int(v) for v in spec.replace(",", ";").split(";"))
+    return f"\x1b[<0;{x};{y}M".encode()
+
+
 SCENARIOS = {
     "boot": [
         (1.2, b"\x03"),
@@ -591,6 +599,101 @@ SCENARIOS = {
         (2.5, b"/model"),
         (0.3, b"\r"),             # picker open
         (1.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # home screen only — pattern dots / themed backgrounds / transparent
+    "home": [
+        (6.0, b"\r"),             # needsAuth menu -> auth -> idle home
+        (5.0, b""),               # settled home frame
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # focus view via ctrl+f: session with tool calls + diff, then ctrl+f
+    # opens the most recent tool item full-screen
+    "focuskey": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"clean up index.js"),
+        (0.3, b"\r"),
+        (9.0, b"1"),              # permission -> Yes
+        (9.0, b""),               # turn done -> idle
+        (0.5, b"\x06"),           # ctrl+f -> focus last tool item
+        (3.0, b""),               # focus view frame
+        (0.5, b"\x1b"),           # esc closes
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # focus view via a real SGR mouse click on a diff row
+    # (DRIVE_CLICK=row,col overrides the default target)
+    "focusclick": [
+        (6.0, b"\r"),
+        (2.5, b"clean up index.js"),
+        (0.3, b"\r"),
+        (9.0, b"1"),
+        (9.0, b""),
+        # click — \x1b[<0;<x>;<y>M (1-based coords), default mid-screen
+        (0.5, _click_bytes()),
+        (3.0, b""),               # focus view frame
+        (0.5, b"\x1b"),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # /settings overlay
+    "settings": [
+        (6.0, b"\r"),             # needsAuth -> auth -> home
+        (2.5, b"/settings"),
+        (0.3, b"\r"),             # overlay open
+        (2.0, b""),               # settings frame
+        (0.5, b"\x1b"),           # esc closes
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # /theme overlay mid-preview: open, arrow down to Nord, hold the
+    # previewed frame, esc reverts, quit
+    "theme": [
+        (6.0, b"\r"),             # needsAuth -> auth -> home
+        (2.5, b"/theme"),
+        (0.3, b"\r"),             # overlay open (auto selected)
+        (0.8, b"\x1b[B"),         # ↓ -> devin
+        (0.8, b"\x1b[B"),         # ↓ -> light (live preview)
+        (0.8, b"\x1b[B"),         # ↓ -> high-contrast
+        (0.8, b"\x1b[B"),         # ↓ -> nord
+        (2.5, b""),               # nord preview frame
+        (0.5, b"\x1b"),           # esc -> revert to prev theme
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # focus-reporting sequences must never reach the composer: type text,
+    # inject \x1b[I / \x1b[O focus in/out events, type more — the composer
+    # text must be exactly what was typed
+    "focusseq": [
+        (6.0, b"\r"),             # needsAuth -> auth -> home
+        (2.5, b"abc"),
+        (0.4, b"\x1b[I"),         # terminal focus-in
+        (0.4, b"\x1b[O"),         # terminal focus-out
+        (0.4, b"\x1b]11;rgb:ffff/ffff/ffff\x07"),  # late OSC 11 reply
+        (0.4, b"def"),
+        (1.5, b""),               # composer should read 'abcdef'
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # reduced motion (config motion:false): two frames ~1s apart while
+    # working must differ only in the elapsed counter
+    "motion": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"clean up index.js"),
+        (0.3, b"\r"),
+        (3.0, b""),               # working frame A (~3s in)
+        (1.0, b""),               # working frame B (~4s in)
+        (6.0, b"1"),              # permission -> Yes
+        (6.0, b""),
+        (0.5, b"\x03"),
         (0.4, b"\x03"),
         (1.0, b""),
     ],

@@ -5,7 +5,7 @@ import {
 	blankLine,
 } from './lines.js';
 import {
-	transcriptLines,
+	transcriptLayout,
 	planLines,
 	moreMarker,
 	statusBar,
@@ -50,18 +50,28 @@ export interface SessionUI {
 	catalog: CatalogState; // model pricing catalog (pickers)
 }
 
-export function contentWidth(cols: number): number {
+/** Reading width by zoom setting: compact keeps transcripts narrow,
+ *  comfortable is the default cap, wide uses the full screen. */
+export function contentWidth(
+	cols: number,
+	width: 'compact' | 'comfortable' | 'wide' = 'comfortable',
+): number {
+	if (width === 'compact') return Math.min(88, cols - 4);
+	if (width === 'wide') return cols - 4;
 	return Math.min(110, cols - 4);
 }
 
-/** The session screen: transcript + plan + dropdown + input + status bar. */
+/** The session screen: transcript + plan + dropdown + input + status bar.
+ *  `rowItem` maps every screen row to the transcript item id occupying it
+ *  (undefined for blanks/aux/status) — the App keeps it for click hit-tests. */
 export function sessionLines(
 	s: State,
 	ui: SessionUI,
 	cols: number,
 	rows: number,
-): Seg[][] {
-	const w = contentWidth(cols);
+	width: 'compact' | 'comfortable' | 'wide' = 'comfortable',
+): {lines: Seg[][]; rowItem: (string | undefined)[]} {
+	const w = contentWidth(cols, width);
 	const x = Math.max(0, Math.floor((cols - w) / 2));
 	const frame = (line: Seg[]): Seg[] =>
 		padSegs([seg(' '.repeat(x)), ...line], cols);
@@ -137,32 +147,63 @@ export function sessionLines(
 		1,
 		rows - input.length - 1 - aux.length - 1 - 3,
 	);
-	const all = transcriptLines(s, w, ui.tick, ui.permSel);
+	const layout = transcriptLayout(s, w, ui.tick, ui.permSel);
+	const all = layout.lines;
 	const end = Math.max(0, all.length - ui.scrollOffset);
 	const start = Math.max(0, end - transH);
 	const view = all.slice(start, end);
 	const fillTop = transH - view.length;
 
+	// transcript row index → item id (separators/permission rows unmapped)
+	const itemAt = new Array<string | undefined>(all.length);
+	for (const sp of layout.spans) {
+		for (let i = sp.start; i < sp.end; i++) itemAt[i] = sp.id;
+	}
+
 	const lines: Seg[][] = [];
-	for (let i = 0; i < fillTop; i++) lines.push(blankLine(cols));
-	for (const l of view) lines.push(frame(l));
+	const rowItem: (string | undefined)[] = [];
+	for (let i = 0; i < fillTop; i++) {
+		lines.push(blankLine(cols));
+		rowItem.push(undefined);
+	}
+	for (let i = 0; i < view.length; i++) {
+		lines.push(frame(view[i]));
+		rowItem.push(itemAt[start + i]);
+	}
 	lines.push(blankLine(cols));
-	for (const l of aux) lines.push(frame(l));
-	for (const l of input) lines.push(frame(l));
+	rowItem.push(undefined);
+	for (const l of aux) {
+		lines.push(frame(l));
+		rowItem.push(undefined);
+	}
+	for (const l of input) {
+		lines.push(frame(l));
+		rowItem.push(undefined);
+	}
 
 	// breathing room: one blank row between the composer and the status
 	// bar, and two below the status bar so it doesn't sit near the last row
 	lines.push(blankLine(cols));
+	rowItem.push(undefined);
 	const elapsed = s.turnStartedAt ? Date.now() - s.turnStartedAt : 0;
 	const spend =
 		s.turnStats.length > 0 || s.reportedCost
 			? fmtSpend(sessionSpend(s.turnStats, ui.catalog, s.reportedCost))
 			: undefined;
 	lines.push(statusBar(s, cols, ui.tick, elapsed, spend));
+	rowItem.push(undefined);
 	lines.push(blankLine(cols));
+	rowItem.push(undefined);
 	lines.push(blankLine(cols));
+	rowItem.push(undefined);
 
-	while (lines.length < rows) lines.unshift(blankLine(cols));
-	if (lines.length > rows) lines.length = rows;
-	return lines;
+	while (lines.length < rows) {
+		lines.unshift(blankLine(cols));
+		rowItem.unshift(undefined);
+	}
+	if (lines.length > rows) {
+		lines.length = rows;
+		rowItem.length = rows;
+	}
+	return {lines, rowItem};
 }

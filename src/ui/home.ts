@@ -11,6 +11,7 @@ import {
 	LOGO_2X,
 	SPINNER,
 	TIPS,
+	TRUECOLOR,
 	VERSION,
 	type Token,
 } from '../theme.js';
@@ -132,12 +133,71 @@ function logoToken(
 	return x >= pos && x < pos + band ? 'bright' : 'muted';
 }
 
-/** Centered home screen shown until the first prompt is sent. */
+/** Staggered `·` dot field for the 'pattern' background — home screen
+ *  only, never behind text: space cells on bg become dots on a staggered
+ *  grid (`row % 2 === 0`, `(col + ((row/2) % 2) * 3) % 6 === 0`), skipping
+ *  the block rows ±1 × block cols ±4 and the corner row + the 2 below it.
+ *  Dots in the outer half of the remaining distance from the block are
+ *  `patternFar`, the inner half `patternNear`. */
+function dotField(
+	lines: Seg[][],
+	zone: {top: number; h: number; x: number; w: number},
+	cols: number,
+	rows: number,
+): Seg[][] {
+	const rTop = zone.top - 1;
+	const rBot = zone.top + zone.h;
+	const cL = zone.x - 4;
+	const cR = zone.x + zone.w + 4;
+	const maxD = Math.max(cL, cols - 1 - cR, rTop, rows - 1 - rBot, 1);
+	return lines.map((line, r) => {
+		if (r % 2 !== 0 || r >= rows - 3) return line;
+		const stagger = ((r / 2) % 2) * 3;
+		const out: Seg[] = [];
+		let col = 0;
+		for (const s of line) {
+			const sw = strWidth(s.t);
+			if ((s.bg ?? 'bg') !== 'bg' || s.t.trim() !== '') {
+				out.push(s);
+				col += sw;
+				continue;
+			}
+			let buf = '';
+			const flush = () => {
+				if (buf) {
+					out.push({t: buf, k: s.k, bg: s.bg});
+					buf = '';
+				}
+			};
+			for (const ch of s.t) {
+				const inZone = r >= rTop && r <= rBot && col >= cL && col <= cR;
+				const dot = !inZone && (col + stagger) % 6 === 0;
+				if (!dot) {
+					buf += ch;
+					col++;
+					continue;
+				}
+				flush();
+				const dx = col < cL ? cL - col : col > cR ? col - cR : 0;
+				const dy = r < rTop ? rTop - r : r > rBot ? r - rBot : 0;
+				const d = Math.max(dx, dy);
+				out.push(seg('·', d * 2 > maxD ? 'patternFar' : 'patternNear', 'bg'));
+				col++;
+			}
+			flush();
+		}
+		return out;
+	});
+}
+
+/** Centered home screen shown until the first prompt is sent.
+ *  `pattern` draws the staggered dot field (truecolor + pattern bg only). */
 export function homeLines(
 	s: State,
 	ui: HomeUI,
 	cols: number,
 	rows: number,
+	pattern = false,
 ): Seg[][] {
 	const w = Math.min(78, cols - 8);
 	const x = Math.max(0, Math.floor((cols - w) / 2));
@@ -340,5 +400,8 @@ export function homeLines(
 		cols,
 	);
 	if (rows >= 3) lines[rows - 3] = truncSegs(cornerRow, cols);
+	if (pattern && TRUECOLOR) {
+		return dotField(lines, {top, h: block.length, x, w}, cols, rows);
+	}
 	return lines;
 }

@@ -66,6 +66,7 @@ interface Unit {
 	ch: string;
 	k?: Token;
 	bg?: Bg;
+	hex?: string;
 	link?: string;
 	w: number;
 }
@@ -78,6 +79,7 @@ function toUnits(segs: Seg[]): Unit[] {
 				ch,
 				k: s.k,
 				bg: s.bg,
+				hex: s.hex,
 				link: s.link,
 				w: cpWidth(ch.codePointAt(0) ?? 0),
 			});
@@ -90,10 +92,17 @@ function unitsToSegs(units: Unit[]): Seg[] {
 	const out: Seg[] = [];
 	for (const u of units) {
 		const last = out[out.length - 1];
-		if (last && last.k === u.k && last.bg === u.bg && last.link === u.link) {
+		if (
+			last &&
+			last.k === u.k &&
+			last.bg === u.bg &&
+			last.hex === u.hex &&
+			last.link === u.link
+		) {
 			last.t += u.ch;
 		} else {
 			const s: Seg = {t: u.ch, k: u.k, bg: u.bg};
+			if (u.hex) s.hex = u.hex;
 			if (u.link) s.link = u.link;
 			out.push(s);
 		}

@@ -1,13 +1,23 @@
 /**
  * Central style tokens for the entire UI — the ONLY place styling is defined.
  *
- * Grayscale palette (Devin brand is black & white): depth comes from gray
- * background shades, never hue. If the terminal lacks truecolor
- * (COLORTERM not truecolor/24bit) all colors drop to attribute-only
- * equivalents (bold/dim/inverse). Hue is allowed only for the picker
- * palette, success/fail dots and diff +/- lines, $ command highlighting,
- * and the bypass-mode tag.
+ * Tokens resolve through the active theme (`src/themes.ts`): the default
+ * 'devin' theme is grayscale (depth from background shades, never hue);
+ * other built-ins and user themes recolor tokens + neutrals but add no new
+ * hue roles. If the terminal lacks truecolor (COLORTERM not
+ * truecolor/24bit) all colors drop to attribute-only equivalents
+ * (bold/dim/inverse/ansi) and theme/background settings are ignored.
  */
+
+import {
+	BUILTIN_THEMES,
+	builtinTheme,
+	mix,
+	resolveTheme,
+	themeById,
+	type ThemeDef,
+} from './themes.js';
+import type {Settings} from './settings.js';
 
 export const TRUECOLOR = /^(truecolor|24bit)$/i.test(process.env.COLORTERM ?? '');
 
@@ -22,59 +32,48 @@ export type Bg =
 	| 'diffAdd'
 	| 'diffDel';
 
-export const BG_HEX: Record<Bg, string> = {
-	bg: '#0a0a0a', // whole screen
-	panel: '#141414', // input panel, user messages
-	overlay: '#1a1a1a', // popups
-	raised: '#202020', // inline code, inactive-selected
-	sel: '#e8e8e8', // selection row background
-	// picker palette — the ONE allowed hue exception (Devin CLI /model picker)
-	pkSel: '#1c2530', // selected model row
-	pkBlue: '#4db8ff', // FREE badge background
-	// diff line backgrounds (CLI-matching hue exception)
-	diffAdd: '#12261a', // + lines
-	diffDel: '#2a1414', // − lines
-};
-
 export type Token =
 	| 'plain' // default terminal fg
-	| 'text' // #d4d4d4 — body text
-	| 'bright' // #ffffff — values, key names
-	| 'muted' // #7a7a7a — labels
-	| 'faint' // #4a4a4a — lowest-emphasis text
-	| 'rule' // #2a2a2a — separators │ ─
+	| 'text' // body text
+	| 'bright' // values, key names
+	| 'muted' // labels
+	| 'faint' // lowest-emphasis text
+	| 'rule' // separators │ ─
 	| 'accent' // bright + bold — mode name
 	| 'title' // bright + bold — headings, section titles
 	| 'strong' // bright + bold — **markdown bold**
-	| 'sel' // selection row (bg #e8e8e8 / fg #0a0a0a)
+	| 'sel' // selection row (fg selFg on bg sel)
 	| 'code' // `inline code` — bright on raised
-	| 'err' // #e06c6c — failures, ✗, −M stats, failed text
-	| 'ok' // #3ddc84 — ✓, completed dots, +N stats
-	| 'cmdFlag' // #6cb6ff — -flags in $ command lines
-	| 'cmdString' // #e5a07a — "quoted strings" in $ command lines
+	| 'err' // failures, ✗, −M stats, failed text
+	| 'ok' // ✓, completed dots, +N stats
+	| 'cmdFlag' // -flags in $ command lines
+	| 'cmdString' // "quoted strings" in $ command lines
 	| 'thought' // muted italic — thinking
 	| 'ghost' // faint — detail/thought tail
 	| 'caret' // block cursor
 	| 'spin' // muted spinner
-	// picker palette (blue accent — allowed hue exception for /model)
-	| 'pk' // #4db8ff — selected name, chevron, filled bars, effort label
-	| 'pkBold' // #4db8ff + bold — selected inline-permission row
-	| 'pkDim' // blue, dim — ← → arrows
-	| 'pkOff' // #3a3a3a — unfilled bars
-	| 'pkGreen' // #3ddc84 — "New" badge + price-slider low end
-	| 'pkYellow' // #e6d17a — "Beta" badge + price-slider mid-low
-	| 'pkOrange' // #e5a07a — price-slider mid-high
-	| 'pkPurple' // #b48ead — price-slider high end
-	| 'pkBadge' // reserved: FREE badge (#0a0a0a on #4db8ff)
+	// picker palette (accent)
+	| 'pk' // selected name, chevron, filled bars, effort label
+	| 'pkBold' // accent + bold — selected inline-permission row
+	| 'pkDim' // accent, dim — ← → arrows
+	| 'pkOff' // unfilled bars
+	| 'pkGreen' // "New" badge + price-slider low end
+	| 'pkYellow' // "Beta" badge + price-slider mid-low
+	| 'pkOrange' // price-slider mid-high
+	| 'pkPurple' // price-slider high end
+	| 'pkBadge' // FREE badge (fg bg on bg pkBlue)
 	// composer frame bezel + working shimmer
-	| 'bezelHi' // #6a6a6a — top/left edge + ╭
-	| 'bezelMid' // #4a4a4a — ╮ ╰ mixed corners
-	| 'bezelLo' // #2e2e2e — bottom/right edge + ╯
-	| 'shine1' // #ffffff — shimmer band head
-	| 'shine2' // #cfcfcf — shimmer band mid
-	| 'shine3'; // #9a9a9a — shimmer band tail
+	| 'bezelHi' // top/left edge + ╭
+	| 'bezelMid' // ╮ ╰ mixed corners
+	| 'bezelLo' // bottom/right edge + ╯
+	| 'shine1' // shimmer band head
+	| 'shine2' // shimmer band mid
+	| 'shine3' // shimmer band tail
+	// home dot field (background 'pattern' mode)
+	| 'patternFar' // outer half of the distance from the block
+	| 'patternNear'; // inner half
 
-interface StyleDef {
+export interface StyleDef {
 	fg?: string;
 	bg?: Bg;
 	ansi?: string; // ANSI color keyword used in the non-truecolor fallback
@@ -84,43 +83,6 @@ interface StyleDef {
 	italic?: boolean;
 	inverse?: boolean;
 }
-
-const COLOR: Record<Token, StyleDef> = {
-	plain: {},
-	text: {fg: '#d4d4d4'},
-	bright: {fg: '#ffffff'},
-	muted: {fg: '#7a7a7a'},
-	faint: {fg: '#4a4a4a'},
-	rule: {fg: '#2a2a2a'},
-	accent: {fg: '#ffffff', bold: true},
-	title: {fg: '#ffffff', bold: true},
-	strong: {fg: '#ffffff', bold: true},
-	sel: {fg: '#0a0a0a', bg: 'sel'},
-	code: {fg: '#ffffff', bg: 'raised'},
-	err: {fg: '#e06c6c'},
-	ok: {fg: '#3ddc84'},
-	cmdFlag: {fg: '#6cb6ff'},
-	cmdString: {fg: '#e5a07a'},
-	thought: {fg: '#7a7a7a', italic: true},
-	ghost: {fg: '#4a4a4a'},
-	caret: {fg: '#0a0a0a', bg: 'sel'},
-	spin: {fg: '#7a7a7a'},
-	pk: {fg: '#4db8ff'},
-	pkBold: {fg: '#4db8ff', bold: true},
-	pkDim: {fg: '#4db8ff', dim: true},
-	pkOff: {fg: '#5f6b78'},
-	pkGreen: {fg: '#3ddc84'},
-	pkYellow: {fg: '#e6d17a'},
-	pkOrange: {fg: '#e5a07a'},
-	pkPurple: {fg: '#b48ead'},
-	pkBadge: {fg: '#0a0a0a', bg: 'pkBlue'},
-	bezelHi: {fg: '#6a6a6a'},
-	bezelMid: {fg: '#4a4a4a'},
-	bezelLo: {fg: '#2e2e2e'},
-	shine1: {fg: '#ffffff'},
-	shine2: {fg: '#cfcfcf'},
-	shine3: {fg: '#9a9a9a'},
-};
 
 const MONO: Record<Token, StyleDef> = {
 	plain: {},
@@ -157,14 +119,79 @@ const MONO: Record<Token, StyleDef> = {
 	shine1: {bold: true},
 	shine2: {},
 	shine3: {},
+	patternFar: {dim: true},
+	patternNear: {dim: true},
 };
 
+// ---- active theme / background ------------------------------------------------
+
+interface Resolved {
+	colors: Record<Token, StyleDef>;
+	bgs: Record<Bg, string>;
+}
+
+let activeDef: ThemeDef = BUILTIN_THEMES[0];
+let active: Resolved = resolveTheme(BUILTIN_THEMES[0]);
+let paletteBg = BUILTIN_THEMES[0].palette.bg;
+let paletteBright = BUILTIN_THEMES[0].palette.bright;
+let backgroundMode: Settings['background'] = 'pattern';
+/** Theme id 'auto' resolves to — set once at startup by the OSC 11 probe. */
+let autoDetected = 'devin';
+
+export function setAutoDetected(id: string): void {
+	autoDetected = id;
+}
+
+export function setTheme(def: ThemeDef): void {
+	activeDef = def;
+	active = resolveTheme(def);
+	paletteBg = def.palette.bg;
+	paletteBright = def.palette.bright;
+}
+
+/** Resolve a settings theme id to a ThemeDef and activate it: 'auto' →
+ *  the OSC 11 detection result; built-ins and `<configdir>/themes/*.json`
+ *  custom themes by id; unknown ids fall back to 'devin'. */
+export function applyThemeId(id: string, custom: ThemeDef[]): void {
+	if (id === 'auto') {
+		setTheme(builtinTheme(autoDetected) ?? BUILTIN_THEMES[0]);
+		return;
+	}
+	setTheme(themeById(id, custom) ?? BUILTIN_THEMES[0]);
+}
+
+export function setBackground(mode: Settings['background']): void {
+	backgroundMode = mode;
+}
+
+/** Hex fg of a token in the active theme (picker gradients, swatches). */
+export function fgHex(token: Token): string | undefined {
+	return TRUECOLOR ? active.colors[token]?.fg : undefined;
+}
+
+/** Per-row screen background: 'solid' is the palette bg; 'transparent'
+ *  omits it; 'gradient'/'pattern' lift the top rows to
+ *  mix(bg, bright, 0.022) and ease down (smoothstep) to exactly bg at
+ *  60% of the screen height. */
+export function screenBg(row: number, rows: number): string | undefined {
+	if (backgroundMode === 'transparent') return undefined;
+	const bg = paletteBg;
+	if (backgroundMode === 'solid') return bg;
+	const t = Math.max(0, Math.min(1, 1 - row / Math.max(1, rows * 0.6)));
+	if (t <= 0) return bg;
+	const eased = t * t * (3 - 2 * t);
+	return mix(bg, paletteBright, 0.022 * eased);
+}
+
 /** Ink <Text> props for a token + optional region background override;
- *  `hex` replaces the fg under truecolor only (gradient cells). */
+ *  `hex` replaces the fg under truecolor only (gradient cells). `rowBg`
+ *  is this row's `screenBg` — used wherever the resolved bg is 'bg' so
+ *  gradients and transparency apply to padSegs fills automatically. */
 export function segStyle(
 	t: Token | undefined,
 	bg?: Bg,
 	hex?: string,
+	rowBg?: string,
 ): {
 	color?: string;
 	backgroundColor?: string;
@@ -173,7 +200,7 @@ export function segStyle(
 	italic?: boolean;
 	inverse?: boolean;
 } {
-	const d = (TRUECOLOR ? COLOR : MONO)[t ?? 'plain'];
+	const d = (TRUECOLOR ? active.colors : MONO)[t ?? 'plain'];
 	const out: {
 		color?: string;
 		backgroundColor?: string;
@@ -186,7 +213,11 @@ export function segStyle(
 		if (d.fg) out.color = d.fg;
 		if (hex) out.color = hex;
 		const b = bg ?? d.bg;
-		if (b) out.backgroundColor = BG_HEX[b];
+		if (b === 'bg') {
+			if (rowBg) out.backgroundColor = rowBg;
+		} else if (b) {
+			out.backgroundColor = active.bgs[b];
+		}
 	} else {
 		if (d.ansi) out.color = d.ansi;
 		if (d.ansiBg) out.backgroundColor = d.ansiBg;

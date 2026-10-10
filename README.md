@@ -94,6 +94,18 @@ Prices and `✱ New`/`✱ Beta` badges in `/model` come from
 and refreshed on each start. If the CLI isn't signed in, the picker still
 works — pricing just stays hidden.
 
+### Themes & settings
+
+`/settings` opens a small overlay for theme, background, width, mouse,
+motion and alerts — changes apply live and save immediately to
+`~/.config/devin-tui/config.json`. `/theme` previews seven built-in
+themes (`devin` grayscale, `light`, `high-contrast`, `nord`, `gruvbox`,
+`catppuccin`, `tokyo-night`) plus custom themes dropped into
+`~/.config/devin-tui/themes/*.json`; `auto` (the default) matches your
+terminal's background via OSC 11. `/zoom` cycles the transcript width.
+Themes need a truecolor terminal (`COLORTERM=truecolor`); everything else
+degrades to bold/dim/inverse.
+
 ## Updating
 
 ```sh

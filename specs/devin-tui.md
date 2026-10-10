@@ -23,40 +23,172 @@ slash dropdown).
 
 ## Theme
 
-All styling lives in `src/theme.ts` as named tokens — the only place colors
-are defined. Grayscale palette:
+All styling lives in named tokens (`src/theme.ts`) resolved from the active
+theme (`src/themes.ts`); `segStyle(token, bg?, hex?, rowBg?)` is the only
+place tokens become Ink props. `setTheme(def)` swaps the active tables
+(module-level); `fgHex(token)` exposes a token's fg hex for gradients
+(picker price-slider stops) and swatches.
 
-- backgrounds: `bg` #0a0a0a (whole screen), `panel` #141414 (input panel,
-  user messages), `overlay` #1a1a1a (popups), `raised` #202020 (inline code),
-  selection #e8e8e8 on #0a0a0a.
-- foregrounds: `bright` #ffffff, `text` #d4d4d4, `muted` #7a7a7a (labels),
-  `faint` #4a4a4a, `rule` #2a2a2a (separators).
-- `accent` = bright+bold — the mode name. Errors are bright+bold `✗`
-  (never red); success is bright `✓`.
-- Composer frame tokens: `bezelHi` #6a6a6a (top/left edge + `╭`),
-  `bezelMid` #4a4a4a (`╮`/`╰`), `bezelLo` #2e2e2e (bottom/right edge +
-  `╯`); shimmer band `shine1` #ffffff (2 head cells) → `shine2` #cfcfcf
-  (3) → `shine3` #9a9a9a (5). Fallback: bezel = dim, band head = bold.
+- A `ThemeDef` is `{id, name, dark, palette, tokens?}`. The palette holds
+  neutrals (`bg/panel/overlay/raised`, `text/bright/muted/faint/rule`,
+  `sel`/`selFg`) plus the hue roles (`accent/accentBg`, `ok/err/warn/
+  orange/purple/info`, optional `title`, `diffAdd`, `diffDel`). Derived
+  tokens are computed from it (`mix(a,b,t)` = linear RGB lerp):
+  `accent/title/strong` = `title ?? bright` + bold; `sel` = selFg on sel;
+  `code` = bright on raised; `caret` = selFg on sel; `pkOff` =
+  mix(muted, accent, .25); bezels = mix(bg, bright, .38/.25/.15); shine
+  = bright / mix(muted, bright, .7/.3); `patternFar` = mix(bg, bright,
+  .11), `patternNear` = mix(bg, bright, .06); `pkBadge` = bg on pkBlue;
+  `diffAdd/diffDel` default to mix(bg, ok|err, .16). `tokens` overrides
+  individual resolved fgs.
+- The default theme `devin` is the original grayscale palette — its
+  resolved tables deep-equal the original literal `COLOR`/`BG_HEX`
+  (covered by tests). Hue appears only in the existing hue roles
+  (picker accent, ok/err dots and diff lines, `$` command highlighting,
+  the bypass tag); themes recolor tokens and neutrals, they don't add
+  hue roles.
+- **Fallback**: if `COLORTERM` is not `truecolor`/`24bit`, everything is
+  the `MONO` table (bold/dim/italic/inverse/ANSI keyword fgs) — themes
+  and background modes are ignored entirely.
 - Every rendered line is padded to full width so `bg` paints the whole
-  screen; a `Seg` carries an optional `bg` that defaults to the screen shade
-  at render time.
-- **Fallback**: if `COLORTERM` is not `truecolor`/`24bit`, all hex colors and
-  backgrounds drop out — tokens degrade to bold/dim/italic, and selection
-  becomes inverse. One switch in `theme.ts`.
-- **Picker palette** (a hue exception, matching the Devin CLI `/model`
-  picker): `pk` #4db8ff blue, `pkDim` = blue dimmed (arrows), `pkSel` row bg
-  #1c2530, `pkOff` #5f6b78 unfilled bars; reserved for badges: `pkGreen`
-  #3ddc84, `pkYellow` #e6d17a, `pkFree` = #0a0a0a on #4db8ff. Fallback:
-  ANSI `blueBright`/`green`/`yellow`, selected row = inverse.
-- **CLI-matching hue exceptions** — the only non-picker color: `ok` #3ddc84
-  (completed tool dot, `+N` diff stat, `+` diff lines), `err` #e06c6c
-  (failed dot, `−M` stat, `−` lines, failed output), diff row bgs
-  `diffAdd` #12261a / `diffDel` #2a1414, `cmdFlag` #6cb6ff and `cmdString`
-  #e5a07a for `$ command` highlighting, `pkYellow` for the `bypass
-  permissions on` composer tag. Fallback: ANSI green/red/blue/yellow, no
-  diff background. Hue is allowed ONLY for: the picker (incl. the pricing
-  slider's green→yellow→orange→purple gradient), success/fail dots,
-  diff +/- lines, command highlighting, and the bypass tag.
+  screen; a `Seg` carries an optional `bg` that defaults to the row's
+  `screenBg` at render time.
+
+## Settings
+
+`$XDG_CONFIG_HOME/devin-tui/config.json` (`~/.config/devin-tui/`),
+`src/settings.ts`. Parsed with zod per-field — one bad value falls back
+to that field's default, unparseable JSON → all defaults; the file is
+not created until the user changes a setting and writes are atomic
+(tmp + rename). Settings live in React state in App; every change
+applies live and saves immediately.
+
+| field | values | default |
+|-------|--------|---------|
+| `theme` | `'auto'` / built-in id / custom id | `'auto'` |
+| `background` | `'pattern'` `'gradient'` `'solid'` `'transparent'` | `'pattern'` |
+| `width` | `'compact'` `'comfortable'` `'wide'` | `'comfortable'` |
+| `mouse` | bool | `true` |
+| `motion` | bool (`false` = reduced motion) | `true` |
+| `alerts` | `'bell'` `'notify'` `'off'` | `'bell'` |
+
+Env overrides win over the file and are never written back:
+`DEVIN_TUI_THEME=<id>`, `DEVIN_TUI_REDUCED_MOTION=1`,
+`DEVIN_TUI_NO_MOUSE=1`.
+
+## Themes
+
+Built-ins (`src/themes.ts`): `devin` (dark, the default grayscale),
+`light`, `high-contrast`, `nord`, `gruvbox`, `catppuccin`,
+`tokyo-night`. Custom themes live in `<configdir>/themes/*.json` (id =
+filename): `{name?, extends? (built-in id, default devin), palette?,
+tokens?}` — only `#rrggbb` values are accepted, unknown keys and bad
+values are ignored, files >64 KB or unparseable become error rows in
+`/theme`. Custom themes are rescanned each time `/theme` opens.
+
+`'auto'` resolves once at startup: before Ink renders, the TUI queries
+the terminal background with OSC 11 (`ESC ] 11 ; ? BEL`; raw-mode stdin,
+100 ms window). The reply `rgb:R/G/B` (2- or 4-digit components, BEL or
+ST terminator) is converted to relative luminance — `< 0.5` or no reply
+→ `devin`, otherwise `light`. Skipped for non-truecolor terminals and
+when the theme setting isn't `auto`.
+
+## Background
+
+`screenBg(row, rows)` (theme.ts) yields the row's screen color; `Line`
+receives it as `rowBg` and `segStyle` uses it wherever a seg's resolved
+bg is `'bg'` — so fills from `padSegs`/`blankLine` follow automatically.
+
+- `solid` — palette `bg` everywhere.
+- `transparent` — `bg` cells get no `backgroundColor` at all (the
+  terminal's own background shows through); panel/overlay/sel shades are
+  unaffected.
+- `gradient` — top rows lift to `mix(bg, bright, 0.022)` and ease down
+  (smoothstep) to exactly `bg` at 60% of the screen height; below that
+  exactly `bg`.
+- `pattern` — the same lift plus a static `·` dot field on the HOME
+  screen only (never the session, never behind text): space cells on
+  `bg` become dots where `row % 2 === 0` and
+  `(col + ((row/2) % 2) * 3) % 6 === 0`, skipping the centered block's
+  rows ±1 and cols `x-4 .. x+w+4`, the corner row and the two below it.
+  Dots in the outer half of the remaining distance from the block are
+  `patternFar`, the inner half `patternNear`.
+
+## Width / zoom
+
+`contentWidth(cols, width)` — compact `min(88, cols-4)`, comfortable
+`min(110, cols-4)`, wide `cols-4` — threads through `sessionLines` and
+the composer's `moveVertical` math. The home screen keeps its fixed
+centered width. `/zoom` cycles, `/zoom compact|comfortable|wide` sets;
+the new value flashes in the status bar and persists to settings.
+
+## Focus view
+
+Click (mouse reporting on) a transcript item's row, or `ctrl+f` (most
+recent tool item, else the last item) — the block expands to a
+full-screen view (`src/ui/focus.ts`): `⤢ <label> · <i>/<n>` header and
+rule inset 2 cols, all content rows at `cols-4`, a footer with the line
+range and `↑↓ scroll · ←→ prev/next · c copy · esc close` sitting at
+`rows-3` with two blank rows below (the status bar's slot).
+
+- Hit-testing: `transcriptLayout` returns `{lines, spans}` — item rows
+  only; blank separators, inline permission rows, queued and activity
+  rows map to nothing. `sessionLines` exposes `rowItem` (screen row →
+  item id). Clicks are ignored while any picker/overlay/permission is
+  open and on the home screen.
+- Full mode: execute blocks are always expanded (even while running),
+  all output lines shown and long lines hard-wrapped; edit diffs are
+  uncapped (every new-file line, `DIFF_TOO_BIG` raised to 5000); text
+  bodies show all lines. The view live-updates while the item streams;
+  inline permission rows are not shown.
+- Keys: esc/q close; ↑/↓ 1 line; pgup/pgdn page; home/end top/bottom;
+  ←/→ prev/next item (scroll resets); wheel ±3; `c` copies
+  `itemPlainText` and flashes `copied`; everything else is swallowed
+  (pastes included). The view auto-closes when a permission request
+  arrives or the item disappears.
+- `itemPlainText(item, cwd)`: user/agent/thought → text; execute →
+  `$ <cmd>` + output; edit → `--- <path>` then `+ `/`- `/`  `-prefixed
+  diff lines; other tools → output or the one-liner.
+
+## Alerts
+
+`alerts` setting: `'bell'` writes `\x07`; `'notify'` sends OSC 9 on
+iTerm2/ghostty/WezTerm/xterm-kitty, `osascript` `display notification`
+on macOS otherwise, BEL anywhere else; `'off'` disables. Fires when a
+turn finishes after ≥10 s (`Devin finished · 1m 12s`) and when a
+permission request arrives (`Devin needs permission`); messages are
+control-stripped and capped at 100 chars.
+
+Focus reporting `\x1b[?1004h` is enabled while alerts aren't `'off'`
+(always `\x1b[?1004l` on exit) — a focused terminal suppresses alerts.
+Until the first `\x1b[I`/`\x1b[O` report, focus is *unknown* and does
+not suppress. The sequences are consumed at the top of `useInput` (also
+in their ESC-stripped `[I`/`[O` forms) so they can never enter the
+composer; a late OSC 11 `rgb:` reply (arriving after the startup probe)
+is swallowed there too, including its Ink-split `]` introducer.
+
+## Reduced motion
+
+`motion: false` freezes every animation — logo shimmer, spinners, the
+activity-label band, composer shimmer, running-tool dot, tip rotation —
+by passing a constant animation tick of 0 to the renderers; `useTick`
+runs at 1000 ms instead of 80 ms so elapsed timers still update.
+
+## /settings and /theme
+
+`/settings` is a centered overlay (same style/width as `/help`) with one
+row per setting (Theme, Background, Width, Mouse, Motion, Alerts). ↑/↓
+selects a row, ←/→ cycles the value (applied live + saved), Enter on
+Theme opens `/theme`, Esc closes. The footer shows the config path
+(`~`-shortened) and `custom themes: <configdir>/themes/*.json`. In a
+non-truecolor terminal the Theme/Background rows show `needs truecolor
+(COLORTERM=truecolor)`.
+
+`/theme` lists `Auto (match terminal)`, the built-ins, custom themes,
+then error rows — each with a swatch of six `■` glyphs
+(accent/ok/err/warn/purple/text). ↑/↓ previews the theme live over the
+whole screen (the backdrop is NOT dimmed); Enter keeps and saves, Esc
+reverts. `/theme <id>` sets directly.
 
 ## Logo
 
@@ -721,6 +853,10 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
   command blocks. Ctrl+C twice within 1.5s
   → quit (first press shows a hint). `q` quits during auth and from the
   error screen.
+- Click / Ctrl+F: focus a transcript block full-screen (Focus view). While
+  open: ↑/↓ scroll, ←/→ prev/next item, pgup/pgdn page, home/end jump,
+  `c` copy, wheel ±3, esc/q close. `/settings`, `/theme`, `/zoom` manage
+  the persistent settings (see /settings and /theme).
 
 ## State
 
@@ -747,6 +883,12 @@ accumulates parsed `_cognition.ai/turn_stats` (one per turn, deduped by
 `turnRequestId`, replayed on `session/load`) and `reportedCost` holds
 `usage_update`'s optional `cost` — both feed the spend display and reset
 with `usage` on logout/load/clear.
+`settings` holds the persisted Settings plus `themes` (built-in + custom
+defs + load errors) and the resolved `theme` — dispatched on change so
+every change re-renders and saves. `focus` holds the focused item id +
+scroll offset; `rowItem` (screen row → item id) feeds click hit-testing.
+Terminal focus (`terminalFocused`: `true`/`false`/`null` = unknown) gates
+alerts.
 Unknown update kinds ignored (never fatal). Status: booting / needsAuth /
 auth / idle / working / error + turn count, tool-call count, turn elapsed,
 agent title, `sidebar` flag (plan block visibility), `authMethods` +

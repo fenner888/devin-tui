@@ -1,3 +1,4 @@
+import os from 'node:os';
 import {
 	type Seg,
 	seg,
@@ -8,11 +9,18 @@ import {
 	strWidth,
 } from './lines.js';
 import type {SlashCommand, State} from '../state/store.js';
+import {TRUECOLOR} from '../theme.js';
+import {configDir, configPath, type Settings} from '../settings.js';
+import {BUILTIN_THEMES, themeById, type ThemeDef} from '../themes.js';
 
 /** Force every foreground to `faint` — the dimmed backdrop under an overlay. */
 export function dimScreen(lines: Seg[][]): Seg[][] {
 	return lines.map(row =>
-		row.map(s => ({...s, k: 'faint' as const, hex: undefined})),
+		row.map(s =>
+			s.k === 'patternFar' || s.k === 'patternNear'
+				? s
+				: {...s, k: 'faint' as const, hex: undefined},
+		),
 	);
 }
 
@@ -61,6 +69,9 @@ export interface PanelItem {
 		| {type: 'insert'; text: string}
 		| {type: 'help'}
 		| {type: 'resume'}
+		| {type: 'settings'}
+		| {type: 'theme'}
+		| {type: 'zoom'}
 		| {type: 'quit'};
 }
 
@@ -74,6 +85,9 @@ export const LOCAL_RESERVED = new Set([
 	'fusion',
 	'resume',
 	'help',
+	'settings',
+	'theme',
+	'zoom',
 	'exit',
 	'quit',
 ]);
@@ -166,6 +180,27 @@ export function panelItems(s: State): PanelItem[] {
 			label: 'Status',
 			desc: 'show session status',
 			action: {type: 'status'},
+		},
+		{
+			section: 'App',
+			label: 'Settings',
+			desc: 'theme, background, width, mouse, motion, alerts',
+			hint: '/settings',
+			action: {type: 'settings'},
+		},
+		{
+			section: 'App',
+			label: 'Theme',
+			desc: 'pick a theme (live preview)',
+			hint: '/theme',
+			action: {type: 'theme'},
+		},
+		{
+			section: 'App',
+			label: 'Zoom',
+			desc: 'cycle reading width — compact/comfortable/wide',
+			hint: '/zoom',
+			action: {type: 'zoom'},
 		},
 		{
 			section: 'App',
@@ -563,4 +598,244 @@ export function slashMenuBlock(
 			selected ? 'sel' : 'overlay',
 		);
 	});
+}
+
+// ---- settings + theme overlays ------------------------------------------------
+
+export const SETTINGS_ROWS = [
+	'theme',
+	'background',
+	'width',
+	'mouse',
+	'motion',
+	'alerts',
+] as const;
+export type SettingsRow = (typeof SETTINGS_ROWS)[number];
+
+const ROW_LABEL: Record<SettingsRow, string> = {
+	theme: 'Theme',
+	background: 'Background',
+	width: 'Width',
+	mouse: 'Mouse',
+	motion: 'Motion',
+	alerts: 'Alerts',
+};
+
+function valueText(
+	row: SettingsRow,
+	s: Settings,
+	themeName: (id: string) => string,
+): string {
+	switch (row) {
+		case 'theme':
+			return s.theme === 'auto' ? 'auto' : themeName(s.theme);
+		case 'background':
+			return s.background;
+		case 'width':
+			return s.width;
+		case 'mouse':
+			return s.mouse ? 'on' : 'off';
+		case 'motion':
+			return s.motion ? 'on' : 'reduced';
+		case 'alerts':
+			return s.alerts;
+	}
+}
+
+/**
+ * Centered borderless `/settings` overlay — same chrome as `/help`.
+ * `themeName` resolves a theme id to its display name for the Theme row.
+ * In a non-truecolor terminal the Theme/Background values are replaced
+ * by the `needs truecolor` hint.
+ */
+export function settingsBlock(
+	s: Settings,
+	sel: number,
+	w: number,
+	themeName: (id: string) => string,
+): Seg[][] {
+	const pad = padSegs([], w, 'overlay');
+	const out: Seg[][] = [
+		pad,
+		padSegs(
+			[
+				seg('  Settings', 'title', 'overlay'),
+				seg(
+					' '.repeat(Math.max(0, w - 2 - strWidth('  Settings') - 3)),
+					'plain',
+					'overlay',
+				),
+				seg('esc', 'muted', 'overlay'),
+				seg('  ', 'plain', 'overlay'),
+			],
+			w,
+			'overlay',
+		),
+		pad,
+	];
+	for (const [i, r] of SETTINGS_ROWS.entries()) {
+		const tcBlocked = !TRUECOLOR && (r === 'theme' || r === 'background');
+		const value = tcBlocked
+			? 'needs truecolor (COLORTERM=truecolor)'
+			: valueText(r, s, themeName);
+		const label = `  ${ROW_LABEL[r]}`;
+		const selected = i === sel;
+		const rowSegs: Seg[] = [
+			seg(label, 'bright', 'overlay'),
+			seg(
+				' '.repeat(Math.max(1, w - strWidth(label) - strWidth(value) - 8)),
+				'plain',
+				'overlay',
+			),
+			...(tcBlocked
+				? [seg(value, 'faint', 'overlay')]
+				: [
+						seg('← ', 'faint', 'overlay'),
+						seg(value, 'bright', 'overlay'),
+						seg(' →', 'faint', 'overlay'),
+					]),
+			seg('  ', 'plain', 'overlay'),
+		];
+		out.push(
+			padSegs(
+				selected
+					? rowSegs.map(sg => ({...sg, k: 'sel' as const, bg: 'sel' as const}))
+					: rowSegs,
+				w,
+				selected ? 'sel' : 'overlay',
+			),
+		);
+	}
+	out.push(pad);
+	const cfg = configPath().replace(os.homedir(), '~');
+	const dir = configDir().replace(os.homedir(), '~');
+	out.push(
+		padSegs(
+			truncSegs([seg(`  ${cfg}`, 'faint', 'overlay')], w),
+			w,
+			'overlay',
+		),
+		padSegs(
+			truncSegs(
+				[seg(`  custom themes: ${dir}/themes/*.json`, 'faint', 'overlay')],
+				w,
+			),
+			w,
+			'overlay',
+		),
+		pad,
+	);
+	return out;
+}
+
+// ---- /theme picker ------------------------------------------------------------
+
+export type ThemeRow =
+	| {kind: 'auto'}
+	| {kind: 'theme'; def: ThemeDef}
+	| {kind: 'error'; file: string; error: string};
+
+/** 'Auto' first, then built-ins, then custom themes, then error rows. */
+export function themeRows(
+	custom: ThemeDef[],
+	errors: {file: string; error: string}[],
+): ThemeRow[] {
+	return [
+		{kind: 'auto'},
+		...BUILTIN_THEMES.map((def): ThemeRow => ({kind: 'theme', def})),
+		...custom.map((def): ThemeRow => ({kind: 'theme', def})),
+		...errors.map((e): ThemeRow => ({kind: 'error', ...e})),
+	];
+}
+
+/** Six-■ theme swatch: accent/ok/err/warn/purple/text as truecolor hex. */
+function swatch(p: ThemeDef['palette']): Seg[] {
+	return [p.accent, p.ok, p.err, p.warn, p.purple, p.text].map(hex => ({
+		t: '■',
+		hex,
+		bg: 'overlay' as const,
+	}));
+}
+
+function themeRowLabel(r: ThemeRow): string {
+	if (r.kind === 'auto') return 'Auto (match terminal)';
+	if (r.kind === 'theme') return r.def.name;
+	return `⚠ ${r.file}: ${r.error}`;
+}
+
+/**
+ * `/theme` overlay — name + swatch rows; the backdrop is NOT dimmed by the
+ * caller so live previews are visible across the whole screen.
+ */
+export function themeBlock(rows: ThemeRow[], sel: number, w: number): Seg[][] {
+	const pad = padSegs([], w, 'overlay');
+	const out: Seg[][] = [
+		pad,
+		padSegs(
+			[
+				seg('  Theme', 'title', 'overlay'),
+				seg(
+					' '.repeat(Math.max(0, w - 2 - strWidth('  Theme') - 3)),
+					'plain',
+					'overlay',
+				),
+				seg('esc', 'muted', 'overlay'),
+				seg('  ', 'plain', 'overlay'),
+			],
+			w,
+			'overlay',
+		),
+		pad,
+	];
+	for (const [i, r] of rows.entries()) {
+		const name = themeRowLabel(r);
+		const selMark = '  ';
+		const rowSegs: Seg[] =
+			r.kind === 'theme'
+				? [
+						seg(selMark, 'plain', 'overlay'),
+						seg(name, 'bright', 'overlay'),
+						seg(
+							' '.repeat(Math.max(1, w - strWidth(name) - 16)),
+							'plain',
+							'overlay',
+						),
+						...swatch(r.def.palette),
+						seg('  ', 'plain', 'overlay'),
+					]
+				: [
+						seg(selMark, 'plain', 'overlay'),
+						seg(name, r.kind === 'auto' ? 'bright' : 'err', 'overlay'),
+						seg('  ', 'plain', 'overlay'),
+					];
+		out.push(
+			padSegs(
+				i === sel
+					? rowSegs.map(sg => ({...sg, k: 'sel' as const, bg: 'sel' as const}))
+					: rowSegs,
+				w,
+				i === sel ? 'sel' : 'overlay',
+			),
+		);
+	}
+	out.push(pad);
+	out.push(
+		padSegs(
+			[
+				seg(
+					'  ↑↓ preview · ↵ keep · esc revert',
+					'faint',
+					'overlay',
+				),
+			],
+			w,
+			'overlay',
+		),
+	);
+	return out;
+}
+
+/** Display name of a theme id for the /settings Theme row. */
+export function themeName(id: string, custom: ThemeDef[]): string {
+	return themeById(id, custom)?.name ?? id;
 }

@@ -28,6 +28,32 @@ import {levelRank, loadCatalog, type CatalogState} from '../catalog.js';
 import {checkForUpdate} from '../update.js';
 import {fmtSpend, fmtTokens, sessionSpend} from '../spend.js';
 import {
+	DEFAULT_SETTINGS,
+	effectiveSettings,
+	loadSettingsFile,
+	saveSettingsFile,
+	type Settings,
+} from '../settings.js';
+import {
+	applyThemeId,
+	screenBg,
+	setBackground,
+} from '../theme.js';
+import {
+	BUILTIN_THEMES,
+	loadCustomThemes,
+	themeById,
+	type CustomThemeError,
+	type ThemeDef,
+} from '../themes.js';
+import {
+	focusBodyHeight,
+	focusContentHeight,
+	focusLines,
+	type FocusState,
+} from './focus.js';
+import {itemPlainText} from './transcript.js';
+import {
 	asImage,
 	buildBlocks,
 	listProjectFiles,
@@ -47,9 +73,15 @@ import {
 	helpBlock,
 	helpEntries,
 	panelItems,
+	settingsBlock,
+	SETTINGS_ROWS,
 	spliceCentered,
+	themeBlock,
+	themeName,
+	themeRows,
 	type HandoffInfo,
 	type PanelItem,
+	type ThemeRow,
 } from './overlays.js';
 import {
 	defaultSidekickIdx,
@@ -72,7 +104,8 @@ import {
 	sendHandoff,
 } from '../handoff.js';
 import {copyToClipboard} from '../clipboard.js';
-import {mouseDefault, parseMouse, setMouseReporting} from '../mouse.js';
+import {parseMouse, setMouseReporting} from '../mouse.js';
+import {execFile} from 'node:child_process';
 import type {Seg} from './lines.js';
 
 function errMsg(e: unknown): string {
@@ -97,9 +130,12 @@ const LOCAL_COMMANDS: SlashCommand[] = [
 	{name: 'login', description: 'sign in to the agent', local: true},
 	{name: 'logout', description: 'sign out of the agent', local: true},
 	{name: 'status', description: 'show session status', local: true},
+	{name: 'settings', description: 'settings — theme, background, width, alerts', local: true},
+	{name: 'theme', description: 'pick a theme (live preview)', local: true},
+	{name: 'zoom', description: 'reading width: compact / comfortable / wide', local: true},
 	{name: 'clear', description: 'start a fresh session', local: true},
 	{name: 'sidebar', description: 'toggle the plan block', local: true},
-	{name: 'mouse', description: 'toggle mouse-wheel scrolling', local: true},
+	{name: 'mouse', description: 'toggle mouse reporting', local: true},
 	{name: 'help', description: 'show commands and keys', local: true},
 	{name: 'exit', description: 'exit devin-tui', local: true},
 	{name: 'quit', description: 'exit devin-tui', local: true},
@@ -114,6 +150,7 @@ export const HELP_KEYS: readonly {key: string; desc: string}[] = [
 	{key: 'esc esc', desc: 'interrupt the running turn'},
 	{key: 'ctrl+p', desc: 'command panel'},
 	{key: 'ctrl+o', desc: 'expand/collapse command output'},
+	{key: 'click / ctrl+f', desc: 'focus a block full-screen'},
 	{key: 'ctrl+b', desc: 'toggle plan'},
 	{key: 'shift+tab', desc: 'cycle mode'},
 	{key: 'pgup/pgdn', desc: 'scroll transcript'},
@@ -128,6 +165,20 @@ export const HELP_KEYS: readonly {key: string; desc: string}[] = [
 function slashFilter(value: string): string | null {
 	const m = /^\/(\S*)$/.exec(value);
 	return m ? m[1] : null;
+}
+
+/** Terminal focus reporting — enabled while alerts aren't 'off' so a
+ *  focused terminal never rings; always disabled on exit (index.tsx). */
+const FOCUS_ON = '\x1b[?1004h';
+const FOCUS_OFF = '\x1b[?1004l';
+
+function fmtDur(ms: number): string {
+	const s = Math.floor(ms / 1000);
+	const h = Math.floor(s / 3600);
+	const m = Math.floor((s % 3600) / 60);
+	if (h > 0) return `${h}h ${m}m`;
+	if (m > 0) return `${m}m ${s % 60}s`;
+	return `${s}s`;
 }
 
 interface Props {
@@ -145,14 +196,84 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		initialState(cwd, model, ''),
 	);
 	const {columns: cols, rows} = useWindowSize();
-	const tick = useTick(80);
+	// persisted settings — file values; env overrides are applied on top
+	// when the settings take effect and are never written back
+	const [settings, setSettings] = useState<Settings>(() => loadSettingsFile());
+	const settingsRef = useRef(settings);
+	settingsRef.current = settings;
+	const effSettings = useMemo(() => {
+		const s = {...settings};
+		if (process.env.DEVIN_TUI_THEME) s.theme = process.env.DEVIN_TUI_THEME;
+		if (process.env.DEVIN_TUI_REDUCED_MOTION === '1') s.motion = false;
+		if (process.env.DEVIN_TUI_NO_MOUSE === '1') s.mouse = false;
+		return s;
+	}, [settings]);
+	const effSettingsRef = useRef(effSettings);
+	effSettingsRef.current = effSettings;
+	const customThemes = useRef<{
+		themes: ThemeDef[];
+		errors: CustomThemeError[];
+	}>({themes: [], errors: []});
+	const themeInit = useRef(false);
+	if (!themeInit.current) {
+		themeInit.current = true;
+		customThemes.current = loadCustomThemes();
+	}
+	// apply theme + background synchronously during render so a settings
+	// change paints this frame (up to 1 s too late via an effect under
+	// reduced motion). Only fires when the key changes — a live /theme
+	// preview (applyThemeId called directly) is never clobbered, and Esc
+	// still reverts via applyThemeId(prev).
+	const appliedThemeBg = useRef<string | null>(null);
+	const themeBgKey = `${effSettings.theme}|${effSettings.background}`;
+	if (appliedThemeBg.current !== themeBgKey) {
+		appliedThemeBg.current = themeBgKey;
+		setBackground(effSettings.background);
+		applyThemeId(effSettings.theme, customThemes.current.themes);
+	}
+	useEffect(() => {
+		setMouseReporting(effSettings.mouse);
+	}, [effSettings.mouse]);
+	useEffect(() => {
+		// terminal focus reporting feeds alert suppression (only while an
+		// alert mode is enabled; restore always disables it)
+		process.stdout.write(
+			effSettings.alerts === 'off' ? FOCUS_OFF : FOCUS_ON,
+		);
+	}, [effSettings.alerts]);
+	// reduced motion: renderers get a constant tick of 0; the interval
+	// drops to 1 s so elapsed timers still update
+	const tick = useTick(effSettings.motion ? 80 : 1000);
+	const animTick = effSettings.motion ? tick : 0;
+	const animTickRef = useRef(animTick);
+	animTickRef.current = animTick;
 	const [prompt, setPrompt] = useState({value: '', cursor: 0});
 	const promptRef = useRef(prompt);
 	promptRef.current = prompt;
 	const [paletteSel, setPaletteSel] = useState(0);
 	const [permSel, setPermSel] = useState(0);
 	const [scrollOffset, setScrollOffset] = useState(0);
-	const mouseOn = useRef(mouseDefault());
+	// /settings + /theme overlays
+	const [settingsOpen, setSettingsOpen] = useState(false);
+	const [settingsSel, setSettingsSel] = useState(0);
+	const settingsOpenRef = useRef(settingsOpen);
+	settingsOpenRef.current = settingsOpen;
+	const [themeView, setThemeView] = useState<{
+		rows: ThemeRow[];
+		sel: number;
+		prev: string;
+	} | null>(null);
+	const themeViewRef = useRef(themeView);
+	themeViewRef.current = themeView;
+	// focus view — the transcript item shown full-screen + its scroll
+	const [focus, setFocus] = useState<FocusState | null>(null);
+	const focusRef = useRef<FocusState | null>(null);
+	focusRef.current = focus;
+	/** screen row → transcript item id, filled by sessionLines each render */
+	const rowItem = useRef<(string | undefined)[]>([]);
+	/** terminal focus state for alert suppression (unknown until the first
+	 *  focus report arrives — unknown does not suppress) */
+	const termFocus = useRef<'unknown' | 'in' | 'out'>('unknown');
 	const [panelOpen, setPanelOpen] = useState(false);
 	const [panelQuery, setPanelQuery] = useState('');
 	const [panelSel, setPanelSel] = useState(0);
@@ -531,6 +652,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 						permResolve.current = res;
 						setPermSel(0);
 						setScrollOffset(0); // tail-follow so the prompt is visible
+						alert('Devin needs permission');
 						const tcMeta = (req.toolCall as {_meta?: Record<string, unknown>})
 							._meta;
 						const editable = tcMeta?.['cognition.ai/editableCommand'];
@@ -636,6 +758,118 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			conn.cancel().catch(() => {});
 		}
 	}, [resolvePermission]);
+
+	// ---- settings -------------------------------------------------------------
+
+	/** Change one setting: React state re-renders, the theme/background/
+	 *  mouse/alerts effects apply it live, and it saves immediately. */
+	const updateSetting = useCallback(
+		<K extends keyof Settings>(key: K, value: Settings[K]) => {
+			setSettings(prev => {
+				const next = {...prev, [key]: value};
+				saveSettingsFile(next);
+				return next;
+			});
+		},
+		[],
+	);
+
+	const CYCLES: {
+		background: Settings['background'][];
+		width: Settings['width'][];
+		mouse: boolean[];
+		motion: boolean[];
+		alerts: Settings['alerts'][];
+	} = {
+		background: ['pattern', 'gradient', 'solid', 'transparent'],
+		width: ['compact', 'comfortable', 'wide'],
+		mouse: [true, false],
+		motion: [true, false],
+		alerts: ['bell', 'notify', 'off'],
+	};
+
+	const cycleSetting = useCallback(
+		(row: (typeof SETTINGS_ROWS)[number], dir: 1 | -1) => {
+			const order: readonly unknown[] =
+				row === 'theme'
+					? [
+							'auto',
+							...BUILTIN_THEMES.map(t => t.id),
+							...customThemes.current.themes.map(t => t.id),
+						]
+					: CYCLES[row];
+			const cur = settingsRef.current[row];
+			const i = order.indexOf(cur);
+			const next = order[
+				((i < 0 ? 0 : i) + dir + order.length) % order.length
+			];
+			updateSetting(row, next as never);
+		},
+		[updateSetting],
+	);
+
+	/** /theme overlay — rescan custom themes, index the current theme. */
+	const openTheme = useCallback(() => {
+		customThemes.current = loadCustomThemes();
+		const rows = themeRows(
+			customThemes.current.themes,
+			customThemes.current.errors,
+		);
+		const cur = effSettingsRef.current.theme;
+		const sel = Math.max(
+			0,
+			rows.findIndex(r =>
+				r.kind === 'auto' ? cur === 'auto' : r.kind === 'theme' && r.def.id === cur,
+			),
+		);
+		setThemeView({rows, sel, prev: cur});
+	}, []);
+
+	// ---- alerts ----------------------------------------------------------------
+
+	/** Ring the bell or send a desktop notification — suppressed when the
+	 *  terminal is known to be focused ('unknown' does not suppress). */
+	const alert = useCallback((msg: string) => {
+		const mode = effSettingsRef.current.alerts;
+		if (mode === 'off' || termFocus.current === 'in') return;
+		const clean = msg.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 100);
+		if (mode === 'bell') {
+			try {
+				process.stdout.write('\x07');
+			} catch {
+				// gone
+			}
+			return;
+		}
+		const tp = process.env.TERM_PROGRAM ?? '';
+		if (
+			['iTerm.app', 'ghostty', 'WezTerm'].includes(tp) ||
+			process.env.TERM === 'xterm-kitty'
+		) {
+			try {
+				process.stdout.write(`\x1b]9;${clean}\x07`);
+			} catch {
+				// gone
+			}
+			return;
+		}
+		if (process.platform === 'darwin') {
+			execFile(
+				'osascript',
+				[
+					'-e',
+					`display notification ${JSON.stringify(clean)} with title "Devin TUI"`,
+				],
+				() => {},
+			);
+			return;
+		}
+		try {
+			process.stdout.write('\x07');
+		} catch {
+			// gone
+		}
+	}, []);
 
 	/** /model — open the inline model picker (needs a live session + option). */
 	const openPicker = useCallback(() => {
@@ -844,7 +1078,12 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		conn
 			.prompt(blocks)
 			.then(r => {
+				const started = stateRef.current.turnStartedAt;
+				const dur = started ? Date.now() - started : 0;
 				dispatch({type: 'turnEnd', stopReason: r.stopReason});
+				if (r.stopReason !== 'cancelled' && dur >= 10_000) {
+					alert(`Devin finished · ${fmtDur(dur)}`);
+				}
 				if (r.stopReason === 'cancelled') {
 					dispatch({type: 'systemMsg', text: 'turn cancelled'});
 					return; // cancelled turns keep the queue for the next Enter
@@ -905,14 +1144,57 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				return;
 			}
 			if (t === '/mouse') {
-				mouseOn.current = !mouseOn.current;
-				setMouseReporting(mouseOn.current);
+				const next = !effSettingsRef.current.mouse;
+				updateSetting('mouse', next);
 				dispatch({
 					type: 'systemMsg',
-					text: mouseOn.current
-						? 'mouse wheel scrolling on — hold shift (option in iTerm2) to select text'
-						: 'mouse wheel scrolling off — click-and-drag selects text',
+					text: next
+						? 'mouse reporting on — clicks focus blocks; hold shift (option in iTerm2) to select text'
+						: 'mouse reporting off — click-and-drag selects text',
 				});
+				setPrompt({value: '', cursor: 0});
+				return;
+			}
+			if (t === '/settings') {
+				setSettingsSel(0);
+				setSettingsOpen(true);
+				setPrompt({value: '', cursor: 0});
+				return;
+			}
+			if (t === '/theme' || t.startsWith('/theme ')) {
+				const arg = t.slice('/theme'.length).trim();
+				setPrompt({value: '', cursor: 0});
+				if (arg) {
+					customThemes.current = loadCustomThemes();
+					if (arg === 'auto' || themeById(arg, customThemes.current.themes)) {
+						updateSetting('theme', arg);
+						flash(`theme: ${arg}`);
+					} else {
+						dispatch({
+							type: 'systemMsg',
+							text: `unknown theme '${arg}' — /theme lists them`,
+						});
+					}
+					return;
+				}
+				openTheme();
+				return;
+			}
+			if (t === '/zoom' || t.startsWith('/zoom ')) {
+				const arg = t.slice('/zoom'.length).trim();
+				const order: Settings['width'][] = [
+					'compact',
+					'comfortable',
+					'wide',
+				];
+				const next = (order as readonly string[]).includes(arg)
+					? (arg as Settings['width'])
+					: order[
+							(order.indexOf(effSettingsRef.current.width) + 1) %
+								order.length
+						];
+				updateSetting('width', next);
+				flash(`width: ${next}`);
 				setPrompt({value: '', cursor: 0});
 				return;
 			}
@@ -1035,7 +1317,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			if (q.length > 0) dispatch({type: 'clearQueue'});
 			sendPrompt(full, [...queuedAtts.current.splice(0), ...imgs]);
 		},
-		[onQuit, openSession, flash, openPicker, doLogin, doLogout, doStatus, sendPrompt],
+		[onQuit, openSession, flash, openPicker, doLogin, doLogout, doStatus, sendPrompt, updateSetting, openTheme],
 	);
 
 	const cycleMode = useCallback(() => {
@@ -1100,6 +1382,16 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				case 'status':
 					doStatus();
 					break;
+				case 'settings':
+					setSettingsSel(0);
+					setSettingsOpen(true);
+					break;
+				case 'theme':
+					openTheme();
+					break;
+				case 'zoom':
+					submit('/zoom');
+					break;
 				case 'help':
 					openHelp();
 					break;
@@ -1114,7 +1406,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 					break;
 			}
 		},
-		[submit, cycleMode, openPicker, openFusion, openResume, doLogin, doLogout, doStatus, openHelp, onQuit],
+		[submit, cycleMode, openPicker, openFusion, openResume, doLogin, doLogout, doStatus, openHelp, openTheme, onQuit],
 	);
 
 	// ---- input ----------------------------------------------------------------
@@ -1164,9 +1456,21 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			resumeRef.current !== null ||
 			panelOpenRef.current ||
 			helpOpenRef.current ||
+			settingsOpenRef.current ||
+			themeViewRef.current !== null ||
+			focusRef.current !== null ||
 			handoffRef.current !== null
 		);
 	}, []);
+
+	// focus view auto-closes when a permission request arrives or its item
+	// disappears (/clear, session load)
+	useEffect(() => {
+		if (!focus) return;
+		if (state.permission || !state.items.some(it => it.id === focus.id)) {
+			setFocus(null);
+		}
+	}, [focus, state.permission, state.items]);
 
 	// @file mention state — the open token under the cursor, the lazily
 	// loaded project file list, and the filtered dropdown rows
@@ -1203,10 +1507,76 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 
 	useInput((input, key) => {
 		const s = stateRef.current;
-		const wheel = parseMouse(input);
-		if (wheel !== undefined) {
-			if (wheel === 'up') setScrollOffset(o => o + 3);
-			else if (wheel === 'down') setScrollOffset(o => Math.max(0, o - 3));
+		// terminal focus reporting replies — track for alert suppression
+		// and NEVER let them reach the composer (ESC may be stripped)
+		if (input === '\x1b[I' || input === '[I') {
+			termFocus.current = 'in';
+			return;
+		}
+		if (input === '\x1b[O' || input === '[O') {
+			termFocus.current = 'out';
+			return;
+		}
+		// a late OSC 11 reply (arrived after the startup probe's window)
+		// is terminal chatter, not input — never reach the composer.
+		// Ink strips `\x1b` and may split the reply into a `]` event plus
+		// a `11;rgb:…` event, so also drop the stray `]` it just inserted
+		if (input.includes('11;rgb:')) {
+			setPrompt(p =>
+				p.value[p.cursor - 1] === ']'
+					? {
+							value:
+								p.value.slice(0, p.cursor - 1) +
+								p.value.slice(p.cursor),
+							cursor: p.cursor - 1,
+						}
+					: p,
+			);
+			return;
+		}
+		const m = parseMouse(input);
+		if (m !== undefined) {
+			if (m?.kind === 'wheel') {
+				const f = focusRef.current;
+				if (f) {
+					const max = Math.max(
+						0,
+						focusContentHeight(s, f.id, cols, animTickRef.current) -
+							focusBodyHeight(rows),
+					);
+					setFocus({
+						...f,
+						scroll: Math.max(
+							0,
+							Math.min(max, f.scroll + (m.dir === 'up' ? -3 : 3)),
+						),
+					});
+				} else if (m.dir === 'up') {
+					setScrollOffset(o => o + 3);
+				} else {
+					setScrollOffset(o => Math.max(0, o - 3));
+				}
+			} else if (m?.kind === 'click') {
+				// clicks are ignored while any picker/overlay/permission
+				// prompt is open, and on the home screen
+				if (focusRef.current) return;
+				if (
+					s.permission !== undefined ||
+					pickerRef.current !== null ||
+					fusionRef.current !== null ||
+					resumeRef.current !== null ||
+					panelOpenRef.current ||
+					helpOpenRef.current ||
+					settingsOpenRef.current ||
+					themeViewRef.current !== null ||
+					handoffRef.current !== null ||
+					(s.turns === 0 && s.items.length === 0)
+				) {
+					return;
+				}
+				const id = rowItem.current[m.y];
+				if (id) setFocus({id, scroll: 0});
+			}
 			return;
 		}
 		const isCtrlC = (key.ctrl && input === 'c') || input === '\x03';
@@ -1392,6 +1762,96 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			return;
 		}
 
+		// /settings overlay captures all input while open
+		if (settingsOpen) {
+			const row = SETTINGS_ROWS[
+				Math.min(settingsSel, SETTINGS_ROWS.length - 1)
+			];
+			if (key.escape) {
+				setSettingsOpen(false);
+			} else if (key.upArrow) {
+				setSettingsSel(
+					i => (i - 1 + SETTINGS_ROWS.length) % SETTINGS_ROWS.length,
+				);
+			} else if (key.downArrow) {
+				setSettingsSel(
+					i => (i + 1) % SETTINGS_ROWS.length,
+				);
+			} else if (key.leftArrow || key.rightArrow) {
+				cycleSetting(row, key.rightArrow ? 1 : -1);
+			} else if (key.return && row === 'theme') {
+				setSettingsOpen(false);
+				openTheme();
+			}
+			return;
+		}
+
+		// /theme overlay — ↑↓ previews live, Enter keeps, Esc reverts
+		const tv = themeViewRef.current;
+		if (tv) {
+			const n = Math.max(1, tv.rows.length);
+			if (key.escape) {
+				applyThemeId(tv.prev, customThemes.current.themes);
+				setThemeView(null);
+			} else if (key.upArrow || key.downArrow) {
+				const sel = (tv.sel + (key.upArrow ? -1 : 1) + n) % n;
+				setThemeView({...tv, sel});
+				const r = tv.rows[sel];
+				if (r?.kind === 'theme')
+					applyThemeId(r.def.id, customThemes.current.themes);
+				else if (r?.kind === 'auto')
+					applyThemeId('auto', customThemes.current.themes);
+			} else if (key.return) {
+				const r = tv.rows[tv.sel];
+				if (r?.kind === 'auto') updateSetting('theme', 'auto');
+				else if (r?.kind === 'theme') updateSetting('theme', r.def.id);
+				setThemeView(null);
+			}
+			return;
+		}
+
+		// focus view captures all input while open
+		const f = focusRef.current;
+		if (f) {
+			const idx = s.items.findIndex(it => it.id === f.id);
+			const item = idx >= 0 ? s.items[idx] : undefined;
+			const bodyH = focusBodyHeight(rows);
+			const maxScroll = Math.max(
+				0,
+				focusContentHeight(s, f.id, cols, animTickRef.current) - bodyH,
+			);
+			if (key.escape || input === 'q') {
+				setFocus(null);
+			} else if (key.upArrow) {
+				setFocus({...f, scroll: Math.max(0, f.scroll - 1)});
+			} else if (key.downArrow) {
+				setFocus({...f, scroll: Math.min(maxScroll, f.scroll + 1)});
+			} else if (key.pageUp) {
+				setFocus({...f, scroll: Math.max(0, f.scroll - bodyH)});
+			} else if (key.pageDown) {
+				setFocus({...f, scroll: Math.min(maxScroll, f.scroll + bodyH)});
+			} else if (key.home || (key.ctrl && input === 'a')) {
+				setFocus({...f, scroll: 0});
+			} else if (key.end || (key.ctrl && input === 'e')) {
+				setFocus({...f, scroll: maxScroll});
+			} else if (key.leftArrow || key.rightArrow) {
+				const ni = idx + (key.leftArrow ? -1 : 1);
+				if (ni >= 0 && ni < s.items.length) {
+					setFocus({id: s.items[ni].id, scroll: 0});
+				}
+			} else if (input === 'c' && item) {
+				copyToClipboard(itemPlainText(item, s.cwd));
+				setFocus({...f, copied: true});
+				setTimeout(
+					() =>
+						setFocus(x => (x ? {...x, copied: false} : x)),
+					1200,
+				);
+			}
+			// everything else is swallowed
+			return;
+		}
+
 		// handoff confirmation captures all input while open
 		if (handoff) {
 			if (key.return) void doHandoff(handoff);
@@ -1461,6 +1921,14 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		}
 		if (key.ctrl && input === 'o') {
 			dispatch({type: 'toggleExpandTools'});
+			return;
+		}
+		if (key.ctrl && input === 'f') {
+			// focus the most recent tool item, else the last item
+			const items = s.items;
+			const tool = [...items].reverse().find(it => it.kind === 'tool');
+			const target = tool ?? items[items.length - 1];
+			if (target) setFocus({id: target.id, scroll: 0});
 			return;
 		}
 		if (key.tab && key.shift) {
@@ -1570,7 +2038,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				const nc = moveVertical(
 					prompt.value,
 					prompt.cursor,
-					contentWidth(cols) - 6,
+					contentWidth(cols, effSettings.width) - 6,
 					-1,
 				);
 				if (nc !== null) {
@@ -1593,7 +2061,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				const nc = moveVertical(
 					prompt.value,
 					prompt.cursor,
-					contentWidth(cols) - 6,
+					contentWidth(cols, effSettings.width) - 6,
 					1,
 				);
 				if (nc !== null) {
@@ -1698,80 +2166,133 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	const mentionOpen = mentionItems.length > 0;
 	const mentionSelC = Math.min(mentionSel, Math.max(0, mentionItems.length - 1));
 
-	let lines: Seg[][] = home
-		? homeLines(
-				state,
-				{
-					value: prompt.value,
-					cursor: prompt.cursor,
-					tick,
-					authSel,
-					picker: picker ?? undefined,
-					fusion: fusion ?? undefined,
-					resume: resumeView ?? undefined,
-					paletteSel,
-					slashItems,
-					slashOpen: filter !== null && slashItems.length > 0,
-					mentionItems,
-					mentionOpen,
-					mentionSel: mentionSelC,
-					chips,
-					catalog,
-					handoff: handoff ?? undefined,
-				},
-				cols,
-				rows,
-			)
-		: sessionLines(
-				state,
-				{
-					value: prompt.value,
-					cursor: prompt.cursor,
-					tick,
-					scrollOffset,
-					paletteSel,
-					slashItems,
-					slashOpen: filter !== null && slashItems.length > 0,
-					mentionItems,
-					mentionOpen,
-					mentionSel: mentionSelC,
-					chips,
-					catalog,
-					modelPicker: picker ?? undefined,
-					fusion: fusion ?? undefined,
-					resume: resumeView ?? undefined,
-					permSel,
-					handoff: handoff ?? undefined,
-				},
-				cols,
-				rows,
-			);
+	let lines: Seg[][];
+	if (focus) {
+		// full-screen focus view — replaces the session screen entirely
+		rowItem.current = [];
+		lines = focusLines(
+			state,
+			focus.id,
+			focus.scroll,
+			cols,
+			rows,
+			animTick,
+			focus.copied,
+		);
+	} else if (home) {
+		rowItem.current = [];
+		lines = homeLines(
+			state,
+			{
+				value: prompt.value,
+				cursor: prompt.cursor,
+				tick: animTick,
+				authSel,
+				picker: picker ?? undefined,
+				fusion: fusion ?? undefined,
+				resume: resumeView ?? undefined,
+				paletteSel,
+				slashItems,
+				slashOpen: filter !== null && slashItems.length > 0,
+				mentionItems,
+				mentionOpen,
+				mentionSel: mentionSelC,
+				chips,
+				catalog,
+				handoff: handoff ?? undefined,
+			},
+			cols,
+			rows,
+			effSettings.background === 'pattern',
+		);
+	} else {
+		const r = sessionLines(
+			state,
+			{
+				value: prompt.value,
+				cursor: prompt.cursor,
+				tick: animTick,
+				scrollOffset,
+				paletteSel,
+				slashItems,
+				slashOpen: filter !== null && slashItems.length > 0,
+				mentionItems,
+				mentionOpen,
+				mentionSel: mentionSelC,
+				chips,
+				catalog,
+				modelPicker: picker ?? undefined,
+				fusion: fusion ?? undefined,
+				resume: resumeView ?? undefined,
+				permSel,
+				handoff: handoff ?? undefined,
+			},
+			cols,
+			rows,
+			effSettings.width,
+		);
+		rowItem.current = r.rowItem;
+		lines = r.lines;
+	}
 
+	// the /theme overlay is NOT dimmed — the live preview must stay visible
 	const overlay = panelOpen
-		? commandPanelBlock(
-				filterPanelItems(panelItems(state), panelQuery),
-				panelSel,
-				panelQuery,
-				Math.min(64, Math.max(24, cols - 8)),
-			)
-		: helpOpen
-			? helpBlock(
-					filterHelp(
-						helpEntries(state, LOCAL_COMMANDS, HELP_KEYS),
-						helpQuery,
-					),
-					helpSel,
-					helpQuery,
+		? {
+				block: commandPanelBlock(
+					filterPanelItems(panelItems(state), panelQuery),
+					panelSel,
+					panelQuery,
 					Math.min(64, Math.max(24, cols - 8)),
-					rows - 4,
-				)
-			: null;
-	if (overlay) lines = spliceCentered(dimScreen(lines), overlay, cols, rows);
+				),
+				dim: true,
+			}
+		: helpOpen
+			? {
+					block: helpBlock(
+						filterHelp(
+							helpEntries(state, LOCAL_COMMANDS, HELP_KEYS),
+							helpQuery,
+						),
+						helpSel,
+						helpQuery,
+						Math.min(64, Math.max(24, cols - 8)),
+						rows - 4,
+					),
+					dim: true,
+				}
+			: settingsOpen
+				? {
+						block: settingsBlock(
+							effSettings,
+							settingsSel,
+							Math.min(64, Math.max(24, cols - 8)),
+							id => themeName(id, customThemes.current.themes),
+						),
+						dim: true,
+					}
+				: themeView
+					? {
+							block: themeBlock(
+								themeView.rows,
+								themeView.sel,
+								Math.min(64, Math.max(24, cols - 8)),
+							),
+							dim: false,
+						}
+					: null;
+	if (overlay) {
+		lines = spliceCentered(
+			overlay.dim ? dimScreen(lines) : lines,
+			overlay.block,
+			cols,
+			rows,
+		);
+	}
 
 	return (
 		<Box flexDirection="column" width={cols} height={rows}>
 			{lines.map((l, i) => (
-				<Line key={i} segs={l} />
+				<Line key={i} segs={l} rowBg={screenBg(i, rows)} />
 			))}
 		</Box>
 	);

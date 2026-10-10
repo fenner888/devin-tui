@@ -95,16 +95,26 @@ export function sessionLines(
 		cwd: shortCwd(s.cwd),
 		working: s.status === 'working',
 	}, ui.chips);
-	// picker blocks budget what's left after the composer, the status bar
-	// and its blank rows, the transcript/blank gap and any other aux rows —
-	// the picker sheds its detail rows to fit at small heights
-	const otherAux =
-		plan.length +
-		(plan.length > 0 ? 1 : 0) +
-		marker.length +
-		dropdown.length +
-		(ui.handoff ? handoffBlock(ui.handoff, w).length : 0);
-	const pkMax = Math.max(6, rows - input.length - 7 - otherAux);
+	// pickers, the dropdown and the handoff confirm are POPUPS: they
+	// overlay the bottom of the transcript area (spliced in below) rather
+	// than shrinking it, so the transcript doesn't scroll when they open
+	// or filter. Only the plan block and the scroll marker take layout.
+	const handoffRows = ui.handoff ? handoffBlock(ui.handoff, w) : [];
+	const resumeRows = ui.resume
+		? resumeLines(ui.resume, s.sessionId, s.cwd, w)
+		: [];
+	const aux = [
+		...plan,
+		...(plan.length > 0 ? [blankLine(w)] : []),
+		...marker,
+	];
+	const transH = Math.max(1, rows - input.length - 1 - aux.length - 1 - 3);
+	// the picker sheds detail rows so the whole popup stack fits in the
+	// transcript area; whatever still overflows keeps its bottom rows
+	const pkMax = Math.max(
+		6,
+		transH - dropdown.length - handoffRows.length - resumeRows.length,
+	);
 	const modelOpt =
 		ui.modelPicker || ui.fusion ? findConfigOption(s, 'model') : undefined;
 	const modelPk =
@@ -129,14 +139,7 @@ export function sessionLines(
 					pkMax,
 				)
 			: [];
-	const resumeRows = ui.resume
-		? resumeLines(ui.resume, s.sessionId, s.cwd, w)
-		: [];
-	const handoffRows = ui.handoff ? handoffBlock(ui.handoff, w) : [];
-	const aux = [
-		...plan,
-		...(plan.length > 0 ? [blankLine(w)] : []),
-		...marker,
+	const popup = [
 		...modelPk,
 		...fusionRows,
 		...resumeRows,
@@ -144,10 +147,6 @@ export function sessionLines(
 		...handoffRows,
 	];
 
-	const transH = Math.max(
-		1,
-		rows - input.length - 1 - aux.length - 1 - 3,
-	);
 	const layout = transcriptLayout(s, w, ui.tick, ui.permSel);
 	const all = layout.lines;
 	const end = Math.max(0, all.length - ui.scrollOffset);
@@ -197,6 +196,17 @@ export function sessionLines(
 	rowItem.push(undefined);
 	lines.push(blankLine(cols));
 	rowItem.push(undefined);
+
+	// overlay the popup stack on the transcript's bottom rows, directly
+	// above the blank row over the aux/input blocks; overflow keeps the
+	// bottom rows. Covered rows lose their item id so clicks there don't
+	// open focus.
+	const pop = popup.slice(Math.max(0, popup.length - transH));
+	for (let i = 0; i < pop.length; i++) {
+		const r = transH - pop.length + i;
+		lines[r] = frame(pop[i]);
+		rowItem[r] = undefined;
+	}
 
 	while (lines.length < rows) {
 		lines.unshift(blankLine(cols));

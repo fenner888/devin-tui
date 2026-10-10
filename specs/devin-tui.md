@@ -311,11 +311,14 @@ A vertically + horizontally centered column:
    right-aligned on the top border with 2 border cells after it:
    ` <mode name> ` muted — or ` bypass permissions on ` in `pkYellow`
    when the mode id is `bypass`; the shimmer band recolors only border
-   cells, never the tag text. Anything attached above
-   the composer (slash dropdown, model picker) sits flush on the top
-   border, same width — including on the home screen, where an open
-   dropdown may push the logo/title rows off the top so the composer
-   stays fully visible.
+   cells, never the tag text. Popups (slash/@ dropdown, model/fusion/
+   resume pickers, handoff confirm) OVERLAY the screen rows directly
+   above the composer, flush on its top border at the same width — they
+   are not part of the centered block, so the logo, title and composer
+   never move when one opens or narrows; they may cover the title and
+   logo. When the stack is taller than the space above the composer its
+   bottom rows (nearest the composer) win, and the picker sheds detail
+   rows to fit (`pkBudget`).
 4. Right-aligned under the panel: `shift+tab mode   ctrl+p commands
    alt+enter newline   @ file   ▣ drop image` — keys bright, labels muted.
 5. While booting/auth: step rows (spinner / `✓` / `✗` + label, muted detail —
@@ -357,7 +360,8 @@ value name, else the raw id (real Devin shows `Code`, `Smart`, `Plan`,
 ## Model picker
 
 Devin CLI-style picker, inline directly above the input panel (same slot
-as the slash dropdown, not a centered overlay):
+as the slash dropdown, overlaid on the rows above the composer — not a
+centered overlay):
 
 - Opened by `/model` or the command panel's **Switch model** (Session
   section, hint `/model`); requires a session and a `model` select option,
@@ -832,9 +836,12 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
   on a command row closes and inserts `/name ` into the prompt (key rows
   do nothing), Esc closes.
 - **Slash dropdown**: typing `/` at the start of input opens a two-column
-  dropdown directly above the input panel (`/name` bright padded,
-  description muted), `overlay` bg, selected row full-width selection
-  colors. It shows a scrolling window of at most 8 rows (`menuWindow`
+  dropdown directly above the input panel, overlaid on the transcript's
+  bottom rows — popups (dropdown, pickers, handoff confirm) never take
+  transcript height, so the transcript and composer don't move when one
+  opens or filters; covered transcript rows aren't clickable. Rows are
+  `/name` bright padded + description muted on `overlay` bg, selected
+  row full-width selection colors. It shows a scrolling window of at most 8 rows (`menuWindow`
   tracks the top; the name column width is computed over all matches so
   it doesn't jump while scrolling); a faint `↑`/`↓` on the first/last
   visible row marks off-screen items (the 2 cols are reserved on every

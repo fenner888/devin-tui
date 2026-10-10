@@ -732,6 +732,54 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # popup overlay stability: home composer row must not move as the
+    # dropdown opens/narrows (/, /t, /theme); same for the session
+    # transcript's last row after a turn
+    "popupstab": [
+        (6.0, b"\r"),             # needsAuth -> auth -> home
+        (3.0, b""),               # settled home frame (no dropdown)
+        (0.5, b"/"),              # dropdown opens (full list)
+        (1.0, b""),
+        (0.5, b"t"),              # -> /t filter
+        (1.0, b""),
+        (0.5, b"heme"),           # -> /theme (single match)
+        (1.5, b""),
+        (0.4, b"\x1b"),           # esc closes (clears input)
+        (0.8, b"hi"),
+        (0.3, b"\r"),             # prompt -> session view
+        (9.0, b"1"),              # permission -> Yes
+        (6.0, b""),               # turn done -> idle
+        (0.5, b"/"),              # session dropdown
+        (1.0, b""),
+        (0.5, b"t"),
+        (1.0, b""),
+        (0.5, b"heme"),
+        (1.5, b""),
+        (0.5, b"\x1b"),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # 80x24: /model picker on home and on the session screen must fit
+    # with the composer fully visible
+    "model80": [
+        (6.0, b"\r"),             # needsAuth -> auth -> home
+        (2.0, b"/model"),
+        (0.3, b"\r"),             # picker open on home
+        (2.0, b""),               # model-home-80 frame
+        (0.5, b"\x1b"),
+        (0.8, b"hi"),
+        (0.3, b"\r"),             # prompt -> session view
+        (9.0, b"1"),              # permission -> Yes
+        (6.0, b""),               # idle
+        (0.5, b"/model"),
+        (0.3, b"\r"),             # picker open on session
+        (2.0, b""),               # model-session-80 frame
+        (0.5, b"\x1b"),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
 }
 
 

@@ -211,35 +211,6 @@ export function homeLines(
 		cwd: shortCwd(s.cwd),
 		working: s.status === 'working',
 	}, ui.chips);
-	// the picker sheds detail rows to fit between the logo zone and the
-	// composer (see session.ts for the same budgeting); the budget also
-	// reserves the 3 bottom rows (corner row + 2 blanks)
-	const pkBudget = Math.max(6, rows - input.length - 12);
-	const pkRows = (() => {
-		if ((!ui.picker && !ui.fusion && !ui.resume) || s.status === 'needsAuth')
-			return [] as Seg[][];
-		if (ui.resume) return resumeLines(ui.resume, s.sessionId, s.cwd, w);
-		const mo = findConfigOption(s, 'model');
-		if (!mo) return [] as Seg[][];
-		if (ui.fusion) {
-			return fusionLines(
-				fusionData(mo),
-				mo.currentValue,
-				ui.fusion,
-				w,
-				ui.catalog,
-				pkBudget,
-			);
-		}
-		return pickerLines(
-			mo,
-			findConfigOption(s, 'thought_level'),
-			ui.picker!,
-			w,
-			ui.catalog,
-			pkBudget,
-		);
-	})();
 	const slashRows =
 		ui.slashOpen && s.status !== 'needsAuth'
 			? slashMenuBlock(ui.slashItems, ui.paletteSel, w, '/', ui.slashTop)
@@ -331,9 +302,6 @@ export function homeLines(
 		...(s.status === 'needsAuth'
 			? authMenu(s, ui.authSel, w).map(row => at(x, row))
 			: [
-					...pkRows.map(row => at(x, row)),
-					...slashRows.map(row => at(x, row)),
-					...handoffRows.map(row => at(x, row)),
 					...input.map(row => at(x, row)),
 					at(
 						x,
@@ -351,10 +319,49 @@ export function homeLines(
 	];
 
 	// vertically center the block above the corner zone (corner row at
-	// rows-3 + 2 blank rows); if it overflows (e.g. an open slash dropdown
-	// on a short screen) let the top rows (logo/title) slide off so the
-	// composer stays fully visible
+	// rows-3 + 2 blank rows); if it overflows let the top rows (logo/title)
+	// slide off so the composer stays fully visible. Popups (pickers,
+	// dropdown, handoff) are NOT part of the block — they overlay the rows
+	// directly above the composer afterwards, so the logo, title and
+	// composer never move when a popup opens or narrows.
 	const top = Math.floor((rows - 3 - block.length) / 2);
+	const compTop = top + LOGO_2X.length + 4; // logo + blank + title + version + blank
+	const popupSpace = Math.min(compTop, Math.max(0, rows - 3));
+	// the picker sheds detail rows so the whole popup stack fits in the
+	// space above the composer; whatever still overflows keeps its bottom
+	// rows (nearest the composer)
+	const pkBudget = Math.max(
+		6,
+		popupSpace - slashRows.length - handoffRows.length,
+	);
+	const pkRows = (() => {
+		if ((!ui.picker && !ui.fusion && !ui.resume) || s.status === 'needsAuth')
+			return [] as Seg[][];
+		if (ui.resume) return resumeLines(ui.resume, s.sessionId, s.cwd, w);
+		const mo = findConfigOption(s, 'model');
+		if (!mo) return [] as Seg[][];
+		if (ui.fusion) {
+			return fusionLines(
+				fusionData(mo),
+				mo.currentValue,
+				ui.fusion,
+				w,
+				ui.catalog,
+				pkBudget,
+			);
+		}
+		return pickerLines(
+			mo,
+			findConfigOption(s, 'thought_level'),
+			ui.picker!,
+			w,
+			ui.catalog,
+			pkBudget,
+		);
+	})();
+	const popupRows = [...pkRows, ...slashRows, ...handoffRows].map(row =>
+		at(x, row),
+	);
 	const lines: Seg[][] = [];
 	for (let i = 0; i < rows; i++) {
 		const bi = i - top;
@@ -401,8 +408,16 @@ export function homeLines(
 		cols,
 	);
 	if (rows >= 3) lines[rows - 3] = truncSegs(cornerRow, cols);
-	if (pattern && TRUECOLOR) {
-		return dotField(lines, {top, h: block.length, x, w}, cols, rows);
+	const out =
+		pattern && TRUECOLOR
+			? dotField(lines, {top, h: block.length, x, w}, cols, rows)
+			: lines;
+	// popups overlay the rows directly above the composer — spliced after
+	// the dot field so no dots draw over them; when the stack is taller
+	// than the space, its bottom rows (nearest the composer) win
+	const popup = popupRows.slice(Math.max(0, popupRows.length - popupSpace));
+	for (let i = 0; i < popup.length; i++) {
+		out[popupSpace - popup.length + i] = popup[i];
 	}
-	return lines;
+	return out;
 }

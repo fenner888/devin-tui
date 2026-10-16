@@ -25,7 +25,7 @@ import {Line, useTick} from './Line.js';
 import {homeLines} from './home.js';
 import {contentWidth, sessionLines} from './session.js';
 import {levelRank, loadCatalog, type CatalogState} from '../catalog.js';
-import {checkForUpdate} from '../update.js';
+import {checkForUpdate, runUpdate} from '../update.js';
 import {fmtSpend, fmtTokens, sessionSpend} from '../spend.js';
 import {
 	DEFAULT_SETTINGS,
@@ -105,7 +105,7 @@ import {
 	sendHandoff,
 } from '../handoff.js';
 import {copyToClipboard} from '../clipboard.js';
-import {parseMouse, setMouseReporting} from '../mouse.js';
+import {parseMouse, selectModifier, setMouseReporting} from '../mouse.js';
 import {execFile} from 'node:child_process';
 import type {Seg} from './lines.js';
 
@@ -113,6 +113,11 @@ function errMsg(e: unknown): string {
 	if (e instanceof RequestError) return `${e.message} (code ${e.code})`;
 	if (e instanceof Error) return e.message;
 	return String(e);
+}
+
+function lastNonEmptyLine(text: string): string {
+	const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+	return lines[lines.length - 1] ?? '';
 }
 
 function isAuthError(e: unknown): boolean {
@@ -131,6 +136,8 @@ const LOCAL_COMMANDS: SlashCommand[] = [
 	{name: 'login', description: 'sign in to the agent', local: true},
 	{name: 'logout', description: 'sign out of the agent', local: true},
 	{name: 'status', description: 'show session status', local: true},
+	{name: 'copy', description: "copy Devin's last reply", local: true},
+	{name: 'update', description: 'update devin-tui to the latest version', local: true},
 	{name: 'settings', description: 'settings — theme, background, width, alerts', local: true},
 	{name: 'theme', description: 'pick a theme (live preview)', local: true},
 	{name: 'zoom', description: 'reading width: compact / comfortable / wide', local: true},
@@ -151,7 +158,7 @@ export const HELP_KEYS: readonly {key: string; desc: string}[] = [
 	{key: 'esc esc', desc: 'interrupt the running turn'},
 	{key: 'ctrl+p', desc: 'command panel'},
 	{key: 'ctrl+o', desc: 'expand/collapse command output'},
-	{key: 'click / ctrl+f', desc: 'focus a block full-screen'},
+	{key: 'double-click / ctrl+f', desc: 'focus a block full-screen'},
 	{key: 'ctrl+b', desc: 'toggle plan'},
 	{key: 'shift+tab', desc: 'cycle mode'},
 	{key: 'pgup/pgdn', desc: 'scroll transcript'},
@@ -274,6 +281,10 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	focusRef.current = focus;
 	/** screen row → transcript item id, filled by sessionLines each render */
 	const rowItem = useRef<(string | undefined)[]>([]);
+	const lastClick = useRef<{x: number; y: number; t: number} | null>(null);
+	const lastClickId = useRef<string | undefined>(undefined);
+	const lastLeftPress = useRef<{x: number; y: number} | null>(null);
+	const lastDragHint = useRef(0);
 	/** terminal focus state for alert suppression (unknown until the first
 	 *  focus report arrives — unknown does not suppress) */
 	const termFocus = useRef<'unknown' | 'in' | 'out'>('unknown');
@@ -351,6 +362,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	const histStash = useRef('');
 	const lastCtrlC = useRef(0);
 	const lastEsc = useRef(0);
+	const updateRunning = useRef(false);
 	const ready = useRef(false);
 
 	// ---- connection lifecycle ------------------------------------------------
@@ -565,7 +577,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		if (s.updateAvailable) {
 			dispatch({
 				type: 'systemMsg',
-				text: `update v${s.updateAvailable} available — devin-tui update`,
+				text: `update v${s.updateAvailable} available — type /update`,
 			});
 		}
 		if (s.turnStats.length > 0 || s.reportedCost) {
@@ -746,6 +758,51 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			ms,
 		);
 	}, []);
+
+	const copyReply = useCallback(() => {
+		const s = stateRef.current;
+		const item = [...s.items].reverse().find(it => it.kind === 'agent');
+		if (!item) {
+			flash('nothing to copy yet');
+			return;
+		}
+		copyToClipboard(itemPlainText(item, s.cwd));
+		flash("copied Devin's last reply");
+	}, [flash]);
+
+	const doUpdate = useCallback(() => {
+		if (updateRunning.current) {
+			flash('update already running');
+			return;
+		}
+		updateRunning.current = true;
+		dispatch({type: 'systemMsg', text: 'updating devin-tui…'});
+		void runUpdate()
+			.then(({stdout, stderr}) => {
+				dispatch({
+					type: 'systemMsg',
+					text: lastNonEmptyLine(stdout) || 'devin-tui update completed',
+				});
+				const output = `${stdout}\n${stderr}`.toLowerCase();
+				if (output.includes('updated') || output.includes('already up to date'))
+					dispatch({type: 'updateAvailable', version: undefined});
+			})
+			.catch(e => {
+				const output = e as {stdout?: unknown; stderr?: unknown};
+				const detail =
+					lastNonEmptyLine(String(output.stderr ?? '')) ||
+					lastNonEmptyLine(String(output.stdout ?? '')) ||
+					errMsg(e);
+				dispatch({type: 'systemMsg', text: `update failed: ${detail}`});
+				dispatch({
+					type: 'systemMsg',
+					text: 'run devin-tui update in a terminal for details',
+				});
+			})
+			.finally(() => {
+				updateRunning.current = false;
+			});
+	}, [flash]);
 
 	const resolvePermission = useCallback((optionId?: string) => {
 		const r = permResolve.current;
@@ -1152,7 +1209,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				dispatch({
 					type: 'systemMsg',
 					text: next
-						? 'mouse reporting on — clicks focus blocks; hold shift (option in iTerm2) to select text'
+						? `mouse reporting on — double-click focuses blocks; hold ${selectModifier()} while dragging to select text`
 						: 'mouse reporting off — click-and-drag selects text',
 				});
 				setPrompt({value: '', cursor: 0});
@@ -1279,6 +1336,18 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				setPaletteSel(0);
 				return;
 			}
+			if (t === '/copy') {
+				copyReply();
+				setPrompt({value: '', cursor: 0});
+				setPaletteSel(0);
+				return;
+			}
+			if (t === '/update') {
+				doUpdate();
+				setPrompt({value: '', cursor: 0});
+				setPaletteSel(0);
+				return;
+			}
 			if (t === '/help') {
 				openHelp();
 				setPrompt({value: '', cursor: 0});
@@ -1320,7 +1389,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			if (q.length > 0) dispatch({type: 'clearQueue'});
 			sendPrompt(full, [...queuedAtts.current.splice(0), ...imgs]);
 		},
-		[onQuit, openSession, flash, openPicker, doLogin, doLogout, doStatus, sendPrompt, updateSetting, openTheme],
+		[onQuit, openSession, flash, openPicker, doLogin, doLogout, doStatus, copyReply, doUpdate, sendPrompt, updateSetting, openTheme],
 	);
 
 	const cycleMode = useCallback(() => {
@@ -1385,6 +1454,9 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				case 'status':
 					doStatus();
 					break;
+				case 'copy':
+					copyReply();
+					break;
 				case 'settings':
 					setSettingsSel(0);
 					setSettingsOpen(true);
@@ -1409,7 +1481,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 					break;
 			}
 		},
-		[submit, cycleMode, openPicker, openFusion, openResume, doLogin, doLogout, doStatus, openHelp, openTheme, onQuit],
+		[submit, cycleMode, openPicker, openFusion, openResume, doLogin, doLogout, doStatus, copyReply, openHelp, openTheme, onQuit],
 	);
 
 	// ---- input ----------------------------------------------------------------
@@ -1559,10 +1631,33 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				} else {
 					setScrollOffset(o => Math.max(0, o - 3));
 				}
+			} else if (m?.kind === 'release') {
+				const press = lastLeftPress.current;
+				lastLeftPress.current = null;
+				if (
+					press &&
+					(press.y !== m.y || Math.abs(press.x - m.x) > 2)
+				) {
+					const now = Date.now();
+					if (now - lastDragHint.current >= 30_000) {
+						lastDragHint.current = now;
+						lastClick.current = null;
+						lastClickId.current = undefined;
+						flash(
+							`to select text hold ${selectModifier()} while dragging · /mouse turns wheel scrolling off`,
+							4000,
+						);
+					}
+				}
 			} else if (m?.kind === 'click') {
+				lastLeftPress.current = {x: m.x, y: m.y};
 				// clicks are ignored while any picker/overlay/permission
 				// prompt is open, and on the home screen
-				if (focusRef.current) return;
+				if (focusRef.current) {
+					lastClick.current = null;
+					lastClickId.current = undefined;
+					return;
+				}
 				if (
 					s.permission !== undefined ||
 					pickerRef.current !== null ||
@@ -1575,10 +1670,28 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 					handoffRef.current !== null ||
 					(s.turns === 0 && s.items.length === 0)
 				) {
+					lastClick.current = null;
+					lastClickId.current = undefined;
 					return;
 				}
 				const id = rowItem.current[m.y];
-				if (id) setFocus({id, scroll: 0});
+				const previous = lastClick.current;
+				const now = Date.now();
+				if (
+					id &&
+					previous &&
+					lastClickId.current === id &&
+					now - previous.t <= 400 &&
+					previous.y === m.y &&
+					Math.abs(m.x - previous.x) <= 2
+				) {
+					lastClick.current = null;
+					lastClickId.current = undefined;
+					setFocus({id, scroll: 0});
+				} else {
+					lastClick.current = {x: m.x, y: m.y, t: now};
+					lastClickId.current = id;
+				}
 			}
 			return;
 		}

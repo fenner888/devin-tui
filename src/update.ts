@@ -1,11 +1,47 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {execFile} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {defaultLogFile} from './acp/connection.js';
 
 const PKG_URL =
 	'https://raw.githubusercontent.com/fenner888/devin-tui/main/package.json';
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+export interface UpdateResult {
+	stdout: string;
+	stderr: string;
+}
+
+export function runUpdate(): Promise<UpdateResult> {
+	const projectRoot = fileURLToPath(new URL('..', import.meta.url));
+	const override = process.env.DEVIN_TUI_UPDATE_CMD;
+	return new Promise((resolve, reject) => {
+		const child = execFile(
+			override === undefined ? 'bash' : 'sh',
+			override === undefined
+				? [path.join(projectRoot, 'bin/devin-tui.sh'), 'update']
+				: ['-c', override],
+			{
+				cwd: projectRoot,
+				encoding: 'utf8',
+				maxBuffer: 1024 * 1024,
+				timeout: 120_000,
+			},
+			(error, stdout, stderr) => {
+				const result = {stdout: String(stdout), stderr: String(stderr)};
+				if (error) {
+					Object.assign(error, result);
+					reject(error);
+				} else {
+					resolve(result);
+				}
+			},
+		);
+		child.stdin?.end();
+	});
+}
 
 /** `version` from the project's own package.json — resolved relative to
  *  this module file (import.meta.url), never cwd. */

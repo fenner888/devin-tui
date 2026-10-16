@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {parseMouse} from '../src/mouse.js';
+import {parseMouse, selectModifier} from '../src/mouse.js';
 import {
 	DEFAULT_SETTINGS,
 	effectiveSettings,
@@ -162,20 +162,28 @@ test('settings: missing file → defaults; per-field fallback; round trip', () =
 	delete process.env.XDG_CONFIG_HOME;
 });
 
-test('parseMouse: wheel, click coords, release/motion, non-mouse', () => {
+test('parseMouse: wheel, left press/release, other buttons, motion, non-mouse', () => {
 	assert.deepEqual(parseMouse('\x1b[<64;5;10M'), {kind: 'wheel', dir: 'up'});
 	assert.deepEqual(parseMouse('\x1b[<65;5;10M'), {kind: 'wheel', dir: 'down'});
 	// ESC-stripped form too
 	assert.deepEqual(parseMouse('[<64;5;10M'), {kind: 'wheel', dir: 'up'});
 	// click: SGR button-0 press → 0-based coords
 	assert.deepEqual(parseMouse('\x1b[<0;12;8M'), {kind: 'click', x: 11, y: 7});
-	// releases, motion, other buttons → null
-	assert.equal(parseMouse('\x1b[<0;12;8m'), null);
+	assert.deepEqual(parseMouse('\x1b[<0;12;8m'), {kind: 'release', x: 11, y: 7});
+	// other-button releases and motion → null
+	assert.equal(parseMouse('\x1b[<2;12;8m'), null);
 	assert.equal(parseMouse('\x1b[<32;5;5M'), null);
+	assert.equal(parseMouse('\x1b[<32;5;5m'), null);
 	assert.equal(parseMouse('\x1b[<2;5;5M'), null);
 	// non-mouse input → undefined
 	assert.equal(parseMouse('x'), undefined);
 	assert.equal(parseMouse('\x1b[A'), undefined);
+});
+
+test('selectModifier maps terminal programs to drag-selection keys', () => {
+	assert.equal(selectModifier('iTerm.app'), 'option');
+	assert.equal(selectModifier('Apple_Terminal'), 'fn');
+	assert.equal(selectModifier('WezTerm'), 'shift');
 });
 
 test('screenBg: lifted top, exact bg below 60%, monotonic, transparent', () => {

@@ -382,7 +382,7 @@ export function homeLines(
 			? [
 					seg(' · update ', 'muted'),
 					seg(`v${s.updateAvailable}`, 'bright'),
-					seg(' available — devin-tui update', 'muted'),
+					seg(' available — type /update', 'muted'),
 				]
 			: []),
 		seg('  '),

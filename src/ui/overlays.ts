@@ -66,6 +66,7 @@ export interface PanelItem {
 		| {type: 'login'}
 		| {type: 'logout'}
 		| {type: 'status'}
+		| {type: 'copy'}
 		| {type: 'insert'; text: string}
 		| {type: 'help'}
 		| {type: 'resume'}
@@ -80,6 +81,8 @@ export const LOCAL_RESERVED = new Set([
 	'login',
 	'logout',
 	'status',
+	'copy',
+	'update',
 	'model',
 	'handoff',
 	'fusion',
@@ -124,6 +127,13 @@ export function panelItems(s: State): PanelItem[] {
 			desc: 'expand or collapse command blocks',
 			hint: 'ctrl+o',
 			action: {type: 'toggleExpand'},
+		},
+		{
+			section: 'Session',
+			label: 'Copy last reply',
+			desc: "copy Devin's last reply",
+			hint: '/copy',
+			action: {type: 'copy'},
 		},
 		{
 			section: 'Session',

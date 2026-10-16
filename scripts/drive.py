@@ -20,11 +20,24 @@ import time
 ESC = b"\x1b"
 
 
-def _click_bytes() -> bytes:
+def _click_bytes(spec=None) -> bytes:
     """SGR click bytes — DRIVE_CLICK=x,y (1-based terminal coords)."""
-    spec = os.environ.get("DRIVE_CLICK", "60;18")
+    spec = spec or os.environ.get("DRIVE_CLICK", "60;18")
     x, y = (int(v) for v in spec.replace(",", ";").split(";"))
     return f"\x1b[<0;{x};{y}M".encode()
+
+
+def _release_bytes(spec=None) -> bytes:
+    """SGR left-button release — DRIVE_RELEASE=x,y (1-based terminal coords)."""
+    spec = spec or os.environ.get(
+        "DRIVE_RELEASE", os.environ.get("DRIVE_CLICK", "60;18")
+    )
+    x, y = (int(v) for v in spec.replace(",", ";").split(";"))
+    return f"\x1b[<0;{x};{y}m".encode()
+
+
+FOCUS_CLICK = os.environ.get("DRIVE_CLICK", "60;6")
+FOCUS_RELEASE = os.environ.get("DRIVE_RELEASE", FOCUS_CLICK)
 
 
 SCENARIOS = {
@@ -273,6 +286,18 @@ SCENARIOS = {
         (2.5, b"mod"),            # filter rows by 'mod'
         (1.5, b"\r"),             # Enter -> inserts '/model ' into prompt
         (1.5, ESC),               # clear the prompt
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # show the updated double-click entry in the Keys section
+    "helpkeys": [
+        (6.0, b"\r"),
+        (2.5, b"/help"),
+        (0.3, b"\r"),
+        (1.0, b"double"),
+        (2.0, b""),
+        (0.4, ESC),
         (0.5, b"\x03"),
         (0.4, b"\x03"),
         (1.0, b""),
@@ -560,6 +585,25 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # in-app updater: test commands are captured instead of reaching the TUI
+    "update_ok": [
+        (6.0, b"\r"),
+        (1.5, b"/update"),
+        (0.3, b"\r"),
+        (2.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    "update_fail": [
+        (6.0, b"\r"),
+        (1.5, b"/update"),
+        (0.3, b"\r"),
+        (2.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # spend tracking: /model -> Claude Opus 5 (High cost tier) -> one turn
     # -> status bar shows the priced spend seg before Context; /status
     # prints the spend line (+extra dims line when FAKE_EXTRA_DIMS=1)
@@ -625,7 +669,7 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
-    # focus view via a real SGR mouse click on a diff row
+    # focus view via two SGR mouse clicks on a diff row
     # (DRIVE_CLICK=row,col overrides the default target)
     "focusclick": [
         (6.0, b"\r"),
@@ -633,10 +677,58 @@ SCENARIOS = {
         (0.3, b"\r"),
         (9.0, b"1"),
         (9.0, b""),
-        # click — \x1b[<0;<x>;<y>M (1-based coords), default mid-screen
-        (0.5, _click_bytes()),
+        # press/release/press/release — presses are 0.15s apart
+        (0.5, _click_bytes(FOCUS_CLICK)),
+        (0.03, _release_bytes(FOCUS_RELEASE)),
+        (0.12, _click_bytes(FOCUS_CLICK)),
+        (0.03, _release_bytes(FOCUS_RELEASE)),
         (3.0, b""),               # focus view frame
         (0.5, b"\x1b"),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # one click must leave the composer active (the z remains visible)
+    "singleclick": [
+        (6.0, b"\r"),
+        (2.5, b"clean up index.js"),
+        (0.3, b"\r"),
+        (9.0, b"1"),
+        (9.0, b""),
+        (0.5, _click_bytes(FOCUS_CLICK)),
+        (0.1, _release_bytes(FOCUS_RELEASE)),
+        (1.0, b"z"),
+        (1.5, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # a left-button drag displays the native text-selection hint
+    "draghint": [
+        (6.0, b"\r"),
+        (2.5, b"clean up index.js"),
+        (0.3, b"\r"),
+        (9.0, b"1"),
+        (9.0, b""),
+        (0.5, _click_bytes("60;18")),
+        (0.15, _release_bytes("65;18")),
+        (2.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # /copy runs during a second turn and copies the previous agent reply
+    "copy": [
+        (6.0, b"\r"),
+        (2.5, b"clean up index.js"),
+        (0.3, b"\r"),
+        (9.0, b"1"),
+        (9.0, b""),
+        (0.5, b"continue"),
+        (0.3, b"\r"),
+        (0.5, b"/copy"),
+        (0.3, b"\r"),
+        (0.8, b""),
         (0.5, b"\x03"),
         (0.4, b"\x03"),
         (1.0, b""),
@@ -790,6 +882,15 @@ SCENARIO_ARGS = {
     "resumeid": ["-r", "fake-session-middle"],
 }
 
+SCENARIO_ENV = {
+    "update_ok": {
+        "DEVIN_TUI_UPDATE_CMD": "echo 'devin-tui: updated v0.3.0 → v0.3.1 — restart any running devin-tui'"
+    },
+    "update_fail": {
+        "DEVIN_TUI_UPDATE_CMD": "echo boom >&2; exit 1"
+    },
+}
+
 
 def main() -> int:
     cols, rows, rawfile, scenario = (
@@ -799,6 +900,7 @@ def main() -> int:
         sys.argv[4],
     )
     events = SCENARIOS[scenario]
+    os.environ.update(SCENARIO_ENV.get(scenario, {}))
 
     # DRIVE_AGENT=real -> default `devin acp`; DRIVE_CWD -> --cwd <dir>
     agent = os.environ.get("DRIVE_AGENT", "npx tsx test/fake-agent.ts")

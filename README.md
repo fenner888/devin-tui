@@ -113,6 +113,7 @@ devin-tui update      # works from any directory
 devin-tui --version   # what you have now
 ```
 
+Inside the running TUI, type `/update` to update without leaving the session.
 This pulls `main` into the clone that `devin-tui` runs from and reinstalls
 dependencies, then prints the old → new version. Restart any running
 devin-tui afterwards. No re-link is needed — `devin-tui` on PATH points at

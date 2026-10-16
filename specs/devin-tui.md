@@ -124,9 +124,10 @@ the new value flashes in the status bar and persists to settings.
 
 ## Focus view
 
-Click (mouse reporting on) a transcript item's row, or `ctrl+f` (most
-recent tool item, else the last item) — the block expands to a
-full-screen view (`src/ui/focus.ts`): `⤢ <label> · <i>/<n>` header and
+Double-click (mouse reporting on) a transcript item's row within 400 ms,
+on the same row and within 2 columns, or `ctrl+f` (most recent tool item,
+else the last item) — the block expands to a full-screen view
+(`src/ui/focus.ts`): `▸ <label> · <i>/<n>` header and
 rule inset 2 cols, all content rows at `cols-4`, a footer with the line
 range and `↑↓ scroll · ←→ prev/next · c copy · esc close` sitting at
 `rows-3` with two blank rows below (the status bar's slot).
@@ -134,8 +135,9 @@ range and `↑↓ scroll · ←→ prev/next · c copy · esc close` sitting at
 - Hit-testing: `transcriptLayout` returns `{lines, spans}` — item rows
   only; blank separators, inline permission rows, queued and activity
   rows map to nothing. `sessionLines` exposes `rowItem` (screen row →
-  item id). Clicks are ignored while any picker/overlay/permission is
-  open and on the home screen.
+  item id). A single click does nothing; the second press must still map
+  to the same item id. Clicks are ignored while any picker/overlay/
+  permission is open and on the home screen.
 - Full mode: execute blocks are always expanded (even while running),
   all output lines shown and long lines hard-wrapped; edit diffs are
   uncapped (every new-file line, `DIFF_TOO_BIG` raised to 5000); text
@@ -244,6 +246,15 @@ on a boot error).
   (npm rewrites it), `git pull --ff-only --autostash origin main`, then
   `npm ci` (falls back to `npm install`); prints `updated vOld → vNew` or
   `already up to date (vX)`; exits non-zero on any failure.
+- **`/update`** — runs the same updater inside the TUI using
+  `bash <repo>/bin/devin-tui.sh update`, with stdin ignored and stdout /
+  stderr captured (120-second timeout). While it runs, a system line says
+  `updating devin-tui…`; another request flashes `update already running`.
+  Success shows the last non-empty stdout line and clears the update notice
+  when the output says `updated` or `already up to date`. Failure shows
+  `update failed: <last output line>` and
+  `run devin-tui update in a terminal for details`. Test-only
+  `DEVIN_TUI_UPDATE_CMD` runs an override through `sh -c`.
 - **`devin-tui --version`** (`-v`, `version`) — prints `devin-tui vX.Y.Z`.
 - **Update check** (`src/update.ts`) — fire-and-forget after mount,
   never blocks startup. Local version = `package.json` `version` (read
@@ -289,7 +300,7 @@ A vertically + horizontally centered column:
 
 1. The 2× braille mark (with shimmer).
 2. `Devin` bold bright + ` TUI` muted; below, muted
-   `v0.3.0 · <agentInfo.title once known>`.
+   `v0.3.1 · <agentInfo.title once known>`.
 3. The input panel (composer), width `min(78, cols-8)` — a rounded bezel
    frame `╭─…─╮` / `│ … │` / `╰─…─╯` drawn in `bezel*` tokens on the screen
    `bg`, with `panel` bg inside and 1 col of horizontal padding. Content
@@ -328,8 +339,8 @@ A vertically + horizontally centered column:
    `● Tip  <key> <text>` (● / Tip / key bright, rest muted) cycling ~5 tips
    every ~10s.
 6. Corners: bottom-left `~cwd` muted + ` (<branch>)` faint (omitted
-   outside a git repo), bottom-right `v0.3.0` faint — plus ` · update `
-   muted + `v<latest>` bright + ` available — devin-tui update` muted when an
+   outside a git repo), bottom-right `v0.3.1` faint — plus ` · update `
+   muted + `v<latest>` bright + ` available — type /update` muted when an
    update check found a newer version — inset 2 cols on
    both sides and placed at `rows-3` (two blank rows below), matching
    the session status bar's position.
@@ -660,10 +671,15 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   SGR `ESC[?1006h` is enabled with the alt screen (always disabled on
   exit) so wheel notches arrive as `ESC[<64|65;x;yM` instead of the
   terminal's alternate-scroll ↑/↓ keys (which would recall prompt
-  history). Wheel reports scroll the transcript; other mouse reports are
-  swallowed — never typed into the input. Native drag-selection then
-  needs a modifier (shift; option in iTerm2). `/mouse` toggles reporting
-  at runtime (system line says which mode is active);
+  history). Wheel reports scroll the transcript; left presses are
+  hit-tested for double-click focus; left releases report 0-based
+  coordinates for drag hints. Motion and other mouse reports are
+  swallowed — never typed into the input. Native drag-selection needs
+  `option` in iTerm.app, `fn` in Apple Terminal, or `shift` elsewhere.
+  A drag across rows or more than 2 columns flashes the selection hint
+  for 4 seconds, at most once per 30 seconds. `/mouse` toggles reporting
+  at runtime and its on message describes double-click focus and the
+  terminal's selection modifier;
   `DEVIN_TUI_NO_MOUSE=1` starts with it off.
 - **Input panel**: same framed block as home, full content width. Meta row
   shows `<mode> · <model> · <cwd>` — but `connecting…` muted in place of the
@@ -692,7 +708,7 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   labels muted). The bar keeps a 2-col inset on each side and at least a
   3-col gap between the left and right groups. When
   `updateAvailable` is set the right side gains a
-  leading `update v<latest> · devin-tui update` seg (name muted, version bright) —
+  leading `update v<latest> · type /update` seg (name muted, version bright) —
   it is the FIRST thing dropped under width pressure, then `ctrl+o`, then the rest
   of the key hints, then turns/tools, then the session title, then the
   branch, then the cwd collapses to its basename (never dropped) — the
@@ -717,17 +733,20 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   home in `needsAuth`; a method-not-found error shows a system line),
   `/status` (system line `signed in|signed out · <agentTitle> · session
   <short id|—> · log <path>`, plus a second system line `update v<latest>
-  available — devin-tui update` when an update is known — separate so it never
+  available — type /update` when an update is known — separate so it never
   gets clipped by the 110-col content width; plus, when any spend data
   exists, `spend $0.04 · 3 turns · in 10.5k · cached 10.6k · out 46`
   — `fmtTokens` compacts the counts — with ` · <n> turn(s) on unpriced
   models not included` appended when unpriced turns exist and no cost was
   reported, or ` · reported by Devin` when one was; a final line joins any
-  summed extra dimensions as `<label> <value><tail|pluralTail>` by ` · `), `/handoff [task]` (see
-  below), `/fusion`
-  (see below), `/resume` (see above — session picker), `/help` (see
+  summed extra dimensions as `<label> <value><tail|pluralTail>` by ` · `),
+  `/copy` (copies the most recent agent reply and flashes `copied Devin's
+  last reply`, or `nothing to copy yet`; works while Devin is working),
+  `/update` (runs the CLI updater with captured output and a 120-second
+  timeout), `/handoff [task]` (see below), `/fusion` (see below), `/resume` (see
+  above — session picker), `/help` (see
   Overlays → Help). Agent-advertised commands named `login`,
-  `logout`, `status`, `model`, `handoff`, `fusion`, `resume` or `help` are filtered out of
+  `logout`, `status`, `copy`, `update`, `model`, `handoff`, `fusion`, `resume` or `help` are filtered out of
   the Agent section and slash dropdown so local commands always win.
 
 ## Spend tracking
@@ -811,9 +830,10 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
   `Search` row (muted placeholder, typed text bright, filters); sections
   headed by muted labels (**Session**, **Agent**, **Account**, **App**)
   separated by a blank row — **Session** (New session → `/clear`, Toggle
-  plan, Cycle mode, Toggle command output → `ctrl+o`, Hand off to cloud
-  Devin → `/handoff`, Switch to Fusion → `/fusion`, Switch model →
-  `/model`, Resume session → `/resume`), **Agent** (every advertised
+  plan, Cycle mode, Toggle command output → `ctrl+o`, Copy last reply →
+  `/copy`, Hand off to cloud Devin → `/handoff`, Switch to Fusion →
+  `/fusion`, Switch model → `/model`, Resume session → `/resume`),
+  **Agent** (every advertised
   ACP command minus the locally-handled names), **Account** (Sign in, Sign
   out, Status), **App** (Help → `/help`, Quit). Items are
   two-column: name bright padded to the widest name + 2, description muted;
@@ -868,7 +888,7 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
   command blocks. Ctrl+C twice within 1.5s
   → quit (first press shows a hint). `q` quits during auth and from the
   error screen.
-- Click / Ctrl+F: focus a transcript block full-screen (Focus view). While
+- Double-click / Ctrl+F: focus a transcript block full-screen (Focus view). While
   open: ↑/↓ scroll, ←/→ prev/next item, pgup/pgdn page, home/end jump,
   `c` copy, wheel ±3, esc/q close. `/settings`, `/theme`, `/zoom` manage
   the persistent settings (see /settings and /theme).

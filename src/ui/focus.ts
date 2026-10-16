@@ -53,7 +53,7 @@ function contentLines(
 }
 
 /** The full-screen focus view for transcript item `id`:
- *  `⤢ <label> · <i>/<n>` header, a rule, scrolled content at cols-4
+ *  `▸ <label> · <i>/<n>` header, a rule, scrolled content at cols-4
  *  with a 2-col inset, and a footer with the visible range + hints. */
 export function focusLines(
 	s: State,
@@ -74,7 +74,7 @@ export function focusLines(
 			seg('  '),
 			...truncSegs(
 				[
-					seg('⤢ ', 'muted'),
+					seg('▸ ', 'muted'),
 					seg(label(item, s.cwd), 'bright'),
 					seg(` · ${idx + 1}/${s.items.length}`, 'muted'),
 				],

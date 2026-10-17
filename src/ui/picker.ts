@@ -7,6 +7,7 @@ import {fgHex} from '../theme.js';
 import {hexToRgb} from '../themes.js';
 import {padSegs, seg, segsWidth, strWidth, truncSegs, type Seg} from './lines.js';
 import {shortCwd} from './panel.js';
+import type {CloudSession} from '../cloud.js';
 
 /**
  * The /model picker — styled after the Devin CLI's model picker (the one
@@ -713,6 +714,71 @@ export interface ResumeView {
 	sel: number; // index into the filtered session list
 	filter: string;
 	sessions: SessionInfo[];
+}
+
+export interface CloudPickerView {
+	sel: number;
+	filter: string;
+	sessions: CloudSession[];
+	loading: boolean;
+}
+
+export function filterCloudSessions(
+	sessions: CloudSession[],
+	filter: string,
+): CloudSession[] {
+	const q = filter.trim().toLowerCase();
+	return sessions.filter(
+		session =>
+			!q ||
+			(session.title ?? 'untitled').toLowerCase().includes(q) ||
+			session.id.toLowerCase().includes(q) ||
+			session.status.toLowerCase().includes(q),
+	);
+}
+
+/** Cloud sessions share the Resume picker's inline picker slot and chrome. */
+export function cloudPickerLines(
+	view: CloudPickerView,
+	w: number,
+	maxRows?: number,
+): Seg[][] {
+	const filtered = filterCloudSessions(view.sessions, view.filter);
+	const display: Row[] = view.loading
+		? [{header: 'Loading cloud sessions…'}]
+		: filtered.length > 0
+			? filtered.map((session, i) => ({
+					opt: {
+						value: session.id,
+						name: session.title || 'Untitled',
+					},
+					idx: i,
+				}))
+			: [{header: 'No cloud sessions'}];
+	return pickerShell({
+		title: 'Cloud sessions',
+		filter: view.filter,
+		display,
+		sel: view.sel,
+		rowMeta: (o, bg) => {
+			const session = filtered.find(row => row.id === o.value);
+			if (!session) return [];
+			const when = session.updatedAt
+				? relTime(new Date(session.updatedAt).toISOString())
+				: '';
+			const tok = bg === 'pkSel' ? 'pkDim' : 'faint';
+			return [
+				seg(
+					`${session.status}${when ? ` · ${when}` : ''}`,
+					tok,
+					bg,
+				),
+			];
+		},
+		selectHint: 'session',
+		maxRows,
+		w,
+	});
 }
 
 /** `just now` / `5m ago` / `2h ago` / `3d ago` for an ISO timestamp. */

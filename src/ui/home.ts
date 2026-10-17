@@ -20,8 +20,10 @@ import {
 	fusionData,
 	fusionLines,
 	pickerLines,
+	cloudPickerLines,
 	relTime,
 	resumeLines,
+	type CloudPickerView,
 	type FusionView,
 	type PickerView,
 	type ResumeView,
@@ -47,6 +49,7 @@ export interface HomeUI {
 	picker?: PickerView;
 	fusion?: FusionView;
 	resume?: ResumeView;
+	cloudPicker?: CloudPickerView;
 	recent?: {title?: string | null; updatedAt?: string | null};
 	paletteSel: number;
 	slashItems: {name: string; description?: string}[];
@@ -365,8 +368,13 @@ export function homeLines(
 		popupSpace - slashRows.length - handoffRows.length,
 	);
 	const pkRows = (() => {
-		if ((!ui.picker && !ui.fusion && !ui.resume) || s.status === 'needsAuth')
+		if (
+			(!ui.picker && !ui.fusion && !ui.resume && !ui.cloudPicker) ||
+			s.status === 'needsAuth'
+		)
 			return [] as Seg[][];
+		if (ui.cloudPicker)
+			return cloudPickerLines(ui.cloudPicker, w, pkBudget);
 		if (ui.resume) return resumeLines(ui.resume, s.sessionId, s.cwd, w);
 		const mo = findConfigOption(s, 'model');
 		if (!mo) return [] as Seg[][];

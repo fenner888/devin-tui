@@ -745,13 +745,14 @@ export function permissionRows(
 }
 
 export function systemLines(
-	item: {text: string; bright?: string},
+	item: {text: string; bright?: string; faint?: string},
 	w: number,
 ): Seg[][] {
 	const segs = linkify([seg('· ', 'faint'), seg(item.text, 'faint')]);
 	if (item.bright) {
 		segs.push(...linkify([seg(item.bright, 'bright')]));
 	}
+	if (item.faint) segs.push(...linkify([seg(item.faint, 'faint')]));
 	return [padSegs(truncSegs(segs, w), w)];
 }
 

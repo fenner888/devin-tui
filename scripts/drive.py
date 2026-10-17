@@ -8,6 +8,7 @@ scenarios:
   full   - prompt, permission 'y', palette, scroll, cancel, quit
   short  - prompt, permission 'y', quit (for the 80-col layout)
   recent - show the recent-session Home line and open Resume
+  cloud  - list, open, and reply to a cloud Devin session via the fake API
 """
 import fcntl
 import os
@@ -165,14 +166,11 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
-    # /handoff confirm block (needs DEVIN_API_KEY in env; Esc cancels —
-    # never hits the API)
+    # Open the /handoff confirmation from idle Home (needs DEVIN_API_KEY;
+    # Esc cancels and never hits the API).
     "handoff": [
         (6.0, b"\r"),
-        (2.5, b"hi"),
-        (0.3, b"\r"),
-        (9.0, b"1"),
-        (5.5, b"/handoff fix the flaky test"),
+        (2.5, b"/handoff fix the flaky test"),
         (0.3, b"\r"),             # -> confirm block (handoff-confirm.png)
         (2.5, ESC),               # cancel without sending
         (0.5, b"\x03"),
@@ -717,6 +715,22 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # Fake API-backed cloud session picker/view; never calls Devin's service.
+    "cloud": [
+        (6.0, b"\r"),
+        (2.5, b"/cloud"),
+        (0.3, b"\r"),
+        (1.5, b""),               # cloud picker
+        (0.4, b"\r"),              # open first session
+        (1.5, b""),               # messages in cloud view
+        (0.4, b"Please check this reply"),
+        (0.3, b"\r"),
+        (1.5, b""),               # optimistic and refetched reply
+        (0.5, ESC),                # close to the local screen
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # focus view via two SGR mouse clicks on a diff row
     # (DRIVE_CLICK=row,col overrides the default target)
     "focusclick": [
@@ -936,6 +950,13 @@ SCENARIO_ENV = {
     },
     "update_fail": {
         "DEVIN_TUI_UPDATE_CMD": "echo boom >&2; exit 1"
+    },
+    "cloud": {
+        "DEVIN_API_KEY": "apk_cloud_test_key",
+        "DEVIN_API_URL": (
+            "http://127.0.0.1:"
+            + os.environ.get("DEVIN_TUI_FAKE_CLOUD_PORT", "43123")
+        ),
     },
 }
 

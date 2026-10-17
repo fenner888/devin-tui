@@ -45,7 +45,7 @@ export type TranscriptItem =
 			/** _meta["cognition.ai/cwd"] the tool ran in */
 			toolCwd?: string;
 	  }
-	| {kind: 'system'; id: string; text: string; bright?: string};
+	| {kind: 'system'; id: string; text: string; bright?: string; faint?: string};
 
 export interface PlanItem {
 	content: string;
@@ -184,7 +184,7 @@ export type Action =
 	| {type: 'permissionDone'}
 	| {type: 'userSubmit'; text: string}
 	| {type: 'turnEnd'; stopReason: string}
-	| {type: 'systemMsg'; text: string; bright?: string}
+	| {type: 'systemMsg'; text: string; bright?: string; faint?: string}
 	| {type: 'clear'}
 	| {type: 'toggleSidebar'}
 	| {type: 'setMode'; mode: string}
@@ -519,6 +519,7 @@ export function reducer(state: State, action: Action): State {
 						id: id(),
 						text: action.text,
 						bright: action.bright,
+						faint: action.faint,
 					},
 				],
 			};

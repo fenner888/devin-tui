@@ -553,9 +553,9 @@ centered overlay):
   text; a match split across wrapped rows is not found. Matching is
   recomputed for each query change.
 - The newest (bottom-most) match is selected first. `↑` and Enter move
-  to the older match; `↓` moves newer; both wrap. Non-current matched
-  characters use the `sel` foreground/background contrast pair; the
-  current match uses `pk` on `pkSel`, preserving any link. The viewport
+  to the older match; `↓` moves newer; both wrap. The current match uses
+  the `sel` foreground/background contrast pair; other matches use `pk`
+  on `pkSel`, preserving any link. The viewport
   scrolls to keep the current row visible and roughly centered, with
   tail-follow disabled.
 - Esc closes find and clears highlights. A slash-submitted `/find`

@@ -669,6 +669,22 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # A direct URL and a Markdown link render as OSC 8 links; Focus `o`
+    # opens the first target and displays its flash even if xdg-open fails.
+    "links": [
+        (6.0, b"\r"),
+        (2.5, b"show links"),
+        (0.3, b"\r"),
+        (4.0, b""),               # URL reply
+        (0.5, b"\x06"),           # focus the last (agent) item
+        (1.0, b""),               # focus footer
+        (0.3, b"o"),              # open first URL; launch errors are ignored
+        (1.0, b""),               # `opened 1/2` flash
+        (0.5, b"\x1b"),           # leave Focus
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # focus view via two SGR mouse clicks on a diff row
     # (DRIVE_CLICK=row,col overrides the default target)
     "focusclick": [
@@ -884,7 +900,7 @@ SCENARIO_ARGS = {
 
 SCENARIO_ENV = {
     "update_ok": {
-        "DEVIN_TUI_UPDATE_CMD": "echo 'devin-tui: updated v0.3.0 → v0.3.1 — restart any running devin-tui'"
+        "DEVIN_TUI_UPDATE_CMD": "echo 'devin-tui: updated v0.3.1 → v0.3.2 — restart any running devin-tui'"
     },
     "update_fail": {
         "DEVIN_TUI_UPDATE_CMD": "echo boom >&2; exit 1"

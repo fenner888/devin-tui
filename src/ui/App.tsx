@@ -107,7 +107,7 @@ import {
 import {copyToClipboard} from '../clipboard.js';
 import {parseMouse, selectModifier, setMouseReporting} from '../mouse.js';
 import {execFile} from 'node:child_process';
-import type {Seg} from './lines.js';
+import {findHttpUrls, type Seg} from './lines.js';
 
 function errMsg(e: unknown): string {
 	if (e instanceof RequestError) return `${e.message} (code ${e.code})`;
@@ -279,6 +279,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	const [focus, setFocus] = useState<FocusState | null>(null);
 	const focusRef = useRef<FocusState | null>(null);
 	focusRef.current = focus;
+	const focusLinkCursor = useRef<{id: string; index: number} | null>(null);
 	/** screen row → transcript item id, filled by sessionLines each render */
 	const rowItem = useRef<(string | undefined)[]>([]);
 	const lastClick = useRef<{x: number; y: number; t: number} | null>(null);
@@ -1954,6 +1955,34 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				const ni = idx + (key.leftArrow ? -1 : 1);
 				if (ni >= 0 && ni < s.items.length) {
 					setFocus({id: s.items[ni].id, scroll: 0});
+				}
+			} else if (input === 'o') {
+				const urls = item
+					? findHttpUrls(itemPlainText(item, s.cwd))
+					: [];
+				if (!item || urls.length === 0) {
+					flash('no links in this block');
+				} else {
+					const cursor =
+						focusLinkCursor.current?.id === item.id
+							? focusLinkCursor.current.index % urls.length
+							: 0;
+					const url = urls[cursor]!;
+					focusLinkCursor.current = {
+						id: item.id,
+						index: (cursor + 1) % urls.length,
+					};
+					execFile(
+						process.platform === 'darwin' ? 'open' : 'xdg-open',
+						[url],
+						() => {},
+					);
+					const chars = [...url];
+					const shownUrl =
+						chars.length > 60
+							? `${chars.slice(0, 59).join('')}…`
+							: url;
+					flash(`opened ${cursor + 1}/${urls.length} · ${shownUrl}`);
 				}
 			} else if (input === 'c' && item) {
 				copyToClipboard(itemPlainText(item, s.cwd));

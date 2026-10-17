@@ -1,5 +1,8 @@
 import {seg, strWidth, type Seg} from './lines.js';
 
+const CONTROL_CHAR = /[\x00-\x1f\x7f]/;
+const HTTP_URL = /^https?:\/\/[^\s<>"'`]+$/i;
+
 /**
  * Minimal markdown renderer → styled segments.
  * Supports: `code`, **bold**, # headings, ``` fences (flagged via `code`),
@@ -49,14 +52,22 @@ export function renderMarkdown(text: string): MdLine[] {
 /** Parse inline `code` and **bold** spans into segments. */
 export function inlineSegs(text: string): Seg[] {
 	const segs: Seg[] = [];
-	const re = /(`[^`\n]*`|\*\*[^*\n]+\*\*)/g;
+	const re = /(`[^`\n]*`|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\([^)\n]+\))/g;
 	let last = 0;
 	let m: RegExpExecArray | null;
 	while ((m = re.exec(text))) {
 		if (m.index > last) segs.push(seg(text.slice(last, m.index), 'text'));
 		const tok = m[0];
 		if (tok.startsWith('`')) segs.push(seg(tok.slice(1, -1), 'code'));
-		else segs.push(seg(tok.slice(2, -2), 'strong'));
+		else if (tok.startsWith('**')) segs.push(seg(tok.slice(2, -2), 'strong'));
+		else {
+			const link = /^\[([^\]]+)\]\(([^)\n]+)\)$/.exec(tok);
+			if (link && HTTP_URL.test(link[2]) && !CONTROL_CHAR.test(link[2])) {
+				segs.push({...seg(link[1], 'bright'), link: link[2]});
+			} else {
+				segs.push(seg(tok, 'text'));
+			}
+		}
 		last = m.index + tok.length;
 	}
 	if (last < text.length) segs.push(seg(text.slice(last), 'text'));

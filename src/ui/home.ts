@@ -289,7 +289,10 @@ export function homeLines(
 			zone.push(
 				at(x, [
 					...prefix,
-					...truncSegs([seg(recent.title || 'Untitled')], titleRoom),
+					...truncSegs(
+						[seg(recent.title || 'Untitled', 'text')],
+						titleRoom,
+					),
 					...suffix,
 				]),
 			);

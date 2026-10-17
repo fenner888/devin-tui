@@ -204,7 +204,10 @@ function messagesFrom(rows: unknown[], unixSeconds: boolean): CloudMessage[] {
 					: /user/i.test(String(row.type ?? ''))
 						? 'user'
 						: 'devin',
-			text: typeof row.message === 'string' ? row.message : '',
+			text:
+				typeof row.message === 'string'
+					? row.message.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '')
+					: '',
 			at: millis(
 				unixSeconds ? row.created_at : row.timestamp,
 				unixSeconds,

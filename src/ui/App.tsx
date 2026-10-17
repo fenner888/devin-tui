@@ -390,6 +390,8 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	const cloudViewRef = useRef<CloudView | null>(cloudView);
 	cloudViewRef.current = cloudView;
 	const cloudRequestBusy = useRef(false);
+	const cloudSendBusy = useRef(false);
+	const cloudPollGeneration = useRef(0);
 	const cloudListRequest = useRef(0);
 	const recentSessionFetched = useRef(false);
 	/** -c/-r session-load intent; survives the auth detour */
@@ -1225,17 +1227,17 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			!current ||
 			current.loading ||
 			current.sending ||
-			!current.value.trim() ||
-			cloudRequestBusy.current
+			!current.value.trim()
 		)
 			return;
+		cloudPollGeneration.current++;
+		cloudSendBusy.current = true;
 		const text = current.value.trim();
 		const optimistic: CloudMessage = {
 			from: 'user',
 			text,
 			at: Date.now(),
 		};
-		cloudRequestBusy.current = true;
 		setCloudView({
 			...current,
 			messages: [...current.messages, optimistic],
@@ -1251,7 +1253,13 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				const messages = await getCloudMessages(current.session.id);
 				setCloudView(view =>
 					view?.session.id === current.session.id
-						? {...view, messages, sending: false, notice: 'sent', scroll: 0}
+						? {
+								...view,
+								messages,
+								sending: false,
+								notice: 'sent',
+								scroll: 0,
+							}
 						: view,
 				);
 			} catch (e) {
@@ -1275,7 +1283,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 					: view,
 			);
 		} finally {
-			cloudRequestBusy.current = false;
+			cloudSendBusy.current = false;
 		}
 	}, []);
 
@@ -1284,40 +1292,66 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		if (!cloudSessionId) return;
 		let live = true;
 		const refreshMessages = async () => {
-			if (cloudRequestBusy.current) return;
+			if (
+				cloudRequestBusy.current ||
+				cloudSendBusy.current ||
+				cloudViewRef.current?.sending
+			)
+				return;
 			cloudRequestBusy.current = true;
+			const generation = cloudPollGeneration.current;
 			try {
 				const messages = await getCloudMessages(cloudSessionId);
-				if (live) {
-					setCloudView(current =>
-						current?.session.id === cloudSessionId
-							? {...current, messages, loading: false}
-							: current,
-					);
-				}
+				setCloudView(current => {
+					if (
+						!live ||
+						current?.session.id !== cloudSessionId ||
+						generation !== cloudPollGeneration.current
+					)
+						return current;
+					const next = {...current, messages, loading: false};
+					const heightDelta =
+						cloudViewContentHeight(next, cols) -
+						cloudViewContentHeight(current, cols);
+					return {
+						...next,
+						scroll:
+							current.scroll > 0
+								? Math.max(0, current.scroll + heightDelta)
+								: 0,
+					};
+				});
 			} catch (e) {
-				if (live) {
-					setCloudView(current =>
-						current?.session.id === cloudSessionId
-							? {...current, notice: errMsg(e)}
-							: current,
-					);
-				}
+				setCloudView(current =>
+					!live ||
+					current?.session.id !== cloudSessionId ||
+					generation !== cloudPollGeneration.current
+						? current
+						: {...current, notice: errMsg(e)},
+				);
 			} finally {
 				cloudRequestBusy.current = false;
 			}
 		};
 		const refreshStatus = async () => {
-			if (cloudRequestBusy.current) return;
+			if (
+				cloudRequestBusy.current ||
+				cloudSendBusy.current ||
+				cloudViewRef.current?.sending
+			)
+				return;
 			cloudRequestBusy.current = true;
+			const generation = cloudPollGeneration.current;
 			try {
 				const sessions = await listCloudSessions();
 				const latest = sessions.find(session => session.id === cloudSessionId);
-				if (live && latest) {
+				if (latest) {
 					setCloudView(current =>
-						current?.session.id === cloudSessionId
-							? {...current, session: latest}
-							: current,
+						!live ||
+						current?.session.id !== cloudSessionId ||
+						generation !== cloudPollGeneration.current
+							? current
+							: {...current, session: latest},
 					);
 				}
 			} catch {
@@ -1333,7 +1367,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			clearInterval(messagesTimer);
 			clearInterval(statusTimer);
 		};
-	}, [cloudSessionId]);
+	}, [cloudSessionId, cols]);
 
 	const updateFind = useCallback(
 		(query: string, cursor: number, selected?: number) => {
@@ -2914,7 +2948,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	let lines: Seg[][];
 	if (cloudView) {
 		rowItem.current = [];
-		lines = cloudViewLines(cloudView, cols, rows);
+		lines = cloudViewLines(cloudView, cols, rows, animTick);
 	} else if (focus) {
 		// full-screen focus view — replaces the session screen entirely
 		rowItem.current = [];

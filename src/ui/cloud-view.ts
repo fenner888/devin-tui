@@ -39,9 +39,10 @@ function contentLines(view: CloudView, w: number): Seg[][] {
 	return lines;
 }
 
-function inputLine(view: CloudView, cols: number): Seg[] {
+function inputLine(view: CloudView, cols: number, tick: number): Seg[] {
 	const prefix = seg('  reply ❯ ', 'muted');
 	const room = Math.max(1, cols - segsWidth([prefix]));
+	const cursorOn = tick % 12 < 7;
 	const chars = [...view.value];
 	const cursor = Math.max(0, Math.min(chars.length, view.cursor));
 	let start = cursor;
@@ -65,7 +66,9 @@ function inputLine(view: CloudView, cols: number): Seg[] {
 			[
 				prefix,
 				...(left ? [seg(left, 'text')] : []),
-				seg(marker, 'sel', 'sel'),
+				cursorOn
+					? seg(marker, 'caret', 'sel')
+					: seg(marker, 'text', 'panel'),
 				...(right ? [seg(right, 'text')] : []),
 			],
 			cols,
@@ -79,6 +82,7 @@ export function cloudViewLines(
 	view: CloudView,
 	cols: number,
 	rows: number,
+	tick: number,
 ): Seg[][] {
 	const lines: Seg[][] = Array.from({length: rows}, () => blankLine(cols));
 	const title = view.session.title || 'Untitled';
@@ -110,10 +114,11 @@ export function cloudViewLines(
 		lines[2 + i] = padSegs([seg('  '), ...content[start + i]!], cols);
 	}
 	if (rows >= 4) {
-		lines[rows - 4] = inputLine(view, cols);
+		lines[rows - 4] = inputLine(view, cols, tick);
 		lines[rows - 3] = padSegs(
 			truncSegs(
 				[
+					seg('  '),
 					...(view.notice
 						? [seg(view.notice, view.notice === 'sent' ? 'ok' : 'bright'), seg(' · ', 'faint')]
 						: []),

@@ -133,6 +133,31 @@ test('v1 message lookup retries the singular endpoint on 404 and maps user types
 	]);
 });
 
+test('cloud messages strip terminal controls but preserve tabs and newlines', async t => {
+	configure(t, {
+		DEVIN_API_KEY: 'apk_cloud_test_key',
+		DEVIN_API_URL: 'https://api.test',
+	});
+	mockFetch(t, () =>
+		json({
+			messages: [
+				{
+					type: 'devin_message',
+					message:
+						'safe \x1b]8;;https://evil.test\x07linked\x1b]8;;\x07 \x1b[2J done\x00\x01\x7f\x80\x9f\t tab\nline',
+					timestamp: '2025-01-01T00:00:00.000Z',
+				},
+			],
+		}),
+	);
+
+	const messages = await getCloudMessages('session-1');
+	assert.equal(
+		messages[0]?.text,
+		'safe ]8;;https://evil.testlinked]8;; [2J done\t tab\nline',
+	);
+});
+
 test('v1 send retries singular route and treats detail in a 200 as failure', async t => {
 	const key = 'apk_fake_secret_for_redaction';
 	configure(t, {

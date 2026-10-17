@@ -31,13 +31,13 @@ test('highlightRow splits segments and retains link and token metadata', () => {
 			{start: 12, end: 19},
 		),
 		[
-			{...seg('see'), bg: 'sel'},
+			{...seg('see'), k: 'sel', bg: 'sel'},
 			seg(' '),
 			{
 				...link,
 				t: 'https://',
 			},
-			{...link, t: 'example', bg: 'pkSel'},
+			{...link, t: 'example', k: 'pk', bg: 'pkSel'},
 			{...link, t: '.com'},
 		],
 	);

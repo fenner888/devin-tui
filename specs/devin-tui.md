@@ -225,7 +225,9 @@ on a boot error).
 ## Process / lifecycle
 
 - Enter alternate screen (`\x1b[?1049h`) + hide cursor on start; ALWAYS
-  restore on exit/crash/SIGINT/SIGTERM (`process.on('exit')` backstop). Kill
+  restore on exit/crash/SIGINT/SIGTERM (`process.on('exit')` backstop). Put
+  TTY stdin in raw mode before sending startup terminal sequences so replies
+  are read rather than echoed, and turn raw mode off during restoration. Kill
   the agent child on exit.
 - Ink renders with `incrementalRendering` — only changed rows are
   rewritten, so the blinking caret doesn't repaint the whole screen and

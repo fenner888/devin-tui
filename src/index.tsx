@@ -104,6 +104,11 @@ async function main(): Promise<void> {
 
 	const restore = () => {
 		try {
+			if (process.stdin.isTTY) process.stdin.setRawMode(false);
+		} catch {
+			// already gone
+		}
+		try {
 			process.stdout.write(LEAVE_ALT);
 		} catch {
 			// already gone
@@ -114,6 +119,7 @@ async function main(): Promise<void> {
 	if (settings.theme === 'auto') await detectTerminalBg();
 	else setAutoDetected('devin');
 
+	if (process.stdin.isTTY) process.stdin.setRawMode(true);
 	process.stdout.write(
 		ENTER_ALT +
 			(settings.mouse ? MOUSE_ON : '') +

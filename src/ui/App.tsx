@@ -169,6 +169,7 @@ const LOCAL_COMMANDS: SlashCommand[] = [
 export const HELP_KEYS: readonly {key: string; desc: string}[] = [
 	{key: 'enter', desc: 'send (queues while Devin works)'},
 	{key: 'alt+enter', desc: 'insert a newline (ctrl+j too)'},
+	{key: 'ctrl+r', desc: 'resume a previous session'},
 	{key: '@', desc: 'add a file to the prompt'},
 	{key: 'image path', desc: 'drag or paste an image to attach'},
 	{key: 'esc esc', desc: 'interrupt the running turn'},
@@ -320,6 +321,10 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	const [picker, setPicker] = useState<PickerView | null>(null);
 	const [fusion, setFusion] = useState<FusionView | null>(null);
 	const [resumeView, setResumeView] = useState<ResumeView | null>(null);
+	const [recentSession, setRecentSession] = useState<{
+		title?: string | null;
+		updatedAt?: string | null;
+	} | null>(null);
 	// pending /handoff confirmation — prompt prebuilt, shown above composer
 	const [handoff, setHandoff] = useState<(HandoffInfo & {prompt: string}) | null>(null);
 	// model pricing catalog for the /model + /fusion pickers — loaded
@@ -363,6 +368,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	catalogRef.current = catalog;
 	const resumeRef = useRef<ResumeView | null>(resumeView);
 	resumeRef.current = resumeView;
+	const recentSessionFetched = useRef(false);
 	/** -c/-r session-load intent; survives the auth detour */
 	const pendingResume = useRef(resume);
 	const filesRef = useRef<string[] | null>(null);
@@ -1260,12 +1266,38 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			})
 			.catch(() => {});
 	}, []);
-		useEffect(() => {
+	useEffect(() => {
 		refreshBranch();
 	}, [refreshBranch]);
 	useEffect(() => {
 		if (state.status === 'idle' && !state.loading) refreshBranch();
 	}, [state.status, state.loading, refreshBranch]);
+	useEffect(() => {
+		const conn = connRef.current;
+		if (
+			recentSessionFetched.current ||
+			state.status !== 'idle' ||
+			!state.sessionId ||
+			state.items.length > 0 ||
+			!conn?.canListSessions
+		)
+			return;
+		recentSessionFetched.current = true;
+		let live = true;
+		void conn
+			.listSessions()
+			.then(list => {
+				if (!live) return;
+				const recent = sortSessions(
+					list.filter(si => !si.cwd || si.cwd === cwd),
+				)[0];
+				if (recent) setRecentSession(recent);
+			})
+			.catch(() => {});
+		return () => {
+			live = false;
+		};
+	}, [state.status, state.sessionId, state.items.length, cwd]);
 
 	const submit = useCallback(
 		(text: string) => {
@@ -2244,6 +2276,10 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			if (s.sessionId) openPanel();
 			return;
 		}
+		if (key.ctrl && input === 'r' && s.status === 'idle') {
+			void openResume();
+			return;
+		}
 		if (key.ctrl && input === 'b') {
 			dispatch({type: 'toggleSidebar'});
 			return;
@@ -2524,6 +2560,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				cursor: prompt.cursor,
 				tick: animTick,
 				authSel,
+				recent: recentSession ?? undefined,
 				picker: picker ?? undefined,
 				fusion: fusion ?? undefined,
 				resume: resumeView ?? undefined,

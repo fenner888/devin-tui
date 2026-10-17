@@ -303,7 +303,7 @@ A vertically + horizontally centered column:
 
 1. The 2× braille mark (with shimmer).
 2. `Devin` bold bright + ` TUI` muted; below, muted
-   `v0.3.3 · <agentInfo.title once known>`.
+   `v0.3.4 · <agentInfo.title once known>`.
 3. The input panel (composer), width `min(78, cols-8)` — a rounded bezel
    frame `╭─…─╮` / `│ … │` / `╰─…─╯` drawn in `bezel*` tokens on the screen
    `bg`, with `panel` bg inside and 1 col of horizontal padding. Content
@@ -335,14 +335,21 @@ A vertically + horizontally centered column:
    rows to fit (`pkBudget`).
 4. Right-aligned under the panel: `shift+tab mode   ctrl+p commands
    alt+enter newline   @ file   ▣ drop image` — keys bright, labels muted.
+   `ctrl+r resume` is appended only when the whole hint row fits; it does
+   not fit at 80 columns, so the shortcut is listed in `/help` instead.
 5. While booting/auth: step rows (spinner / `✓` / `✗` + label, muted detail —
    the auth step's own detail is `sign in via your browser…`); during auth a
    faint `q to quit` line follows; errors show the message + log path +
-   `press q to quit`. Once ready: one rotating tip line
-   `● Tip  <key> <text>` (● / Tip / key bright, rest muted) cycling ~5 tips
-   every ~10s.
+   `press q to quit`. Once ready, if `session/list` is supported and returns
+   sessions for this cwd, replace the tip with
+   `Recent  <title or Untitled> · <relative time>   ctrl+r resume` (`Recent`
+   and `ctrl+r` bright, title text, time faint, `resume` muted). Fetch the
+   list once and silently fall back to the rotating tip on failure or an
+   empty result. Truncate the title to fit. Otherwise, show one rotating tip
+   line `● Tip  <key> <text>` (● / Tip / key bright, rest muted) cycling
+   ~5 tips every ~10s.
 6. Corners: bottom-left `~cwd` muted + ` (<branch>)` faint (omitted
-   outside a git repo), bottom-right `v0.3.3` faint — plus ` · update `
+   outside a git repo), bottom-right `v0.3.4` faint — plus ` · update `
    muted + `v<latest>` bright + ` available — type /update` muted when an
    update check found a newer version — inset 2 cols on
    both sides and placed at `rows-3` (two blank rows below), matching
@@ -921,6 +928,7 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
   an `@file` dropdown row; Backspace on an empty input pops the last
   attachment chip.
 - Shift+Tab: cycle modes via `session/set_mode` when `modes` advertised.
+- Ctrl+R: open the existing `/resume` picker from Home or an idle session.
 - Ctrl+P: command panel. Ctrl+B: plan block toggle. Ctrl+O: expand/collapse
   command blocks. Ctrl+C twice within 1.5s
   → quit (first press shows a hint). `q` quits during auth and from the

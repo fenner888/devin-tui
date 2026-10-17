@@ -1402,12 +1402,12 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	);
 
 	const openFind = useCallback(
-		(query = '') => {
+		(query: string, draft: {value: string; cursor: number}) => {
 			if (stateRef.current.items.length === 0) {
 				flash('nothing to search yet');
 				return;
 			}
-			findDraft.current = promptRef.current;
+			findDraft.current = draft;
 			updateFind(query, query.length);
 		},
 		[flash, updateFind],
@@ -1625,7 +1625,10 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			if (t === '/find' || t.startsWith('/find ')) {
 				setPrompt({value: '', cursor: 0});
 				setPaletteSel(0);
-				openFind(t.slice('/find'.length).trimStart());
+				openFind(t.slice('/find'.length).trimStart(), {
+					value: '',
+					cursor: 0,
+				});
 				return;
 			}
 			if (t === '/cloud') {
@@ -1832,7 +1835,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 					copyReply();
 					break;
 				case 'find':
-					openFind();
+					openFind('', promptRef.current);
 					break;
 				case 'settings':
 					setSettingsSel(0);
@@ -2971,6 +2974,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				tick: animTick,
 				authSel,
 				recent: recentSession ?? undefined,
+				flash: state.notice,
 				picker: picker ?? undefined,
 				fusion: fusion ?? undefined,
 				resume: resumeView ?? undefined,

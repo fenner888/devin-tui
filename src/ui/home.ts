@@ -46,6 +46,7 @@ export interface HomeUI {
 	cursor: number;
 	tick: number;
 	authSel: number;
+	flash?: string;
 	picker?: PickerView;
 	fusion?: FusionView;
 	resume?: ResumeView;
@@ -268,7 +269,11 @@ export function homeLines(
 		const tip = TIPS[Math.floor(ui.tick / 125) % TIPS.length];
 		const recent = ui.recent;
 		zone.length = 0;
-		if (recent) {
+		if (ui.flash) {
+			zone.push(
+				at(x, [seg('● ', 'bright'), seg(ui.flash, 'bright')]),
+			);
+		} else if (recent) {
 			const when = relTime(recent.updatedAt);
 			const prefix = [seg('Recent  ', 'bright')];
 			const suffix = [

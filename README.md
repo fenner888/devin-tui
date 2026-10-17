@@ -173,6 +173,8 @@ The version bump on `main` is what triggers users' update notice.
 
 ## Development
 
+GitHub Actions runs typecheck, tests and a PTY smoke test on every pull request.
+
 ```sh
 npm run typecheck                                   # tsc --noEmit
 npm start -- --agent "npx tsx test/fake-agent.ts"   # fake Devin, no login

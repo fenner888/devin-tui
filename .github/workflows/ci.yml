@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: PTY smoke test
+        run: |
+          mkdir -p .snapshots
+          python3 scripts/drive.py 120 36 .snapshots/ci.raw full
+          npx tsx scripts/snapshot.ts .snapshots/ci.raw > .snapshots/ci.txt
+          grep -Fq 'Here is what I found in the workspace:' .snapshots/ci.txt

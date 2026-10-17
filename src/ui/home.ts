@@ -43,6 +43,7 @@ export interface HomeUI {
 	cursor: number;
 	tick: number;
 	authSel: number;
+	flash?: string;
 	picker?: PickerView;
 	fusion?: FusionView;
 	resume?: ResumeView;
@@ -263,11 +264,16 @@ export function homeLines(
 		const tip = TIPS[Math.floor(ui.tick / 125) % TIPS.length];
 		zone.length = 0;
 		zone.push(
-			at(x, [
-				seg('● Tip  ', 'bright'),
-				seg(tip.key, 'bright'),
-				seg(` ${tip.text}`, 'muted'),
-			]),
+			at(
+				x,
+				ui.flash
+					? [seg('● ', 'bright'), seg(ui.flash, 'bright')]
+					: [
+							seg('● Tip  ', 'bright'),
+							seg(tip.key, 'bright'),
+							seg(` ${tip.text}`, 'muted'),
+						],
+			),
 		);
 	}
 

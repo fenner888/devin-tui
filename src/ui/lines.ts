@@ -146,14 +146,14 @@ export function highlightRow(
 			if (end <= local || start >= source.t.length) continue;
 			if (start > local) out.push({...source, t: source.t.slice(local, start)});
 			const from = Math.max(local, start);
+			const current =
+				currentRange?.start === range.start &&
+				currentRange.end === range.end;
 			out.push({
 				...source,
 				t: source.t.slice(from, end),
-				bg:
-					currentRange?.start === range.start &&
-					currentRange.end === range.end
-						? 'pkSel'
-						: 'sel',
+				k: current ? 'pk' : 'sel',
+				bg: current ? 'pkSel' : 'sel',
 			});
 			local = end;
 		}

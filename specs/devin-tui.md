@@ -340,7 +340,8 @@ A vertically + horizontally centered column:
    faint `q to quit` line follows; errors show the message + log path +
    `press q to quit`. Once ready: one rotating tip line
    `● Tip  <key> <text>` (● / Tip / key bright, rest muted) cycling ~5 tips
-   every ~10s.
+   every ~10s. An active flash while idle temporarily replaces this
+   status row with `● <flash>`; when it expires, the tip/Recent line returns.
 6. Corners: bottom-left `~cwd` muted + ` (<branch>)` faint (omitted
    outside a git repo), bottom-right `v0.3.3` faint — plus ` · update `
    muted + `v<latest>` bright + ` available — type /update` muted when an
@@ -533,7 +534,8 @@ centered overlay):
 - `/find [text]` is a local command (`search the conversation`) and is
   reserved from agent-advertised commands. The command panel's Session
   section lists **Find in conversation** with hint `/find`. With no
-  transcript, it flashes `nothing to search yet`.
+  transcript on Home, it flashes `nothing to search yet` in the tip/Recent
+  row slot until the flash expires, then restores the tip or Recent row.
 - The find bar replaces the composer in the same slot, frame style and
   height. Its first row is `find ❯ <query>` with an inverse-block cursor;
   the right side shows faint `<i>/<n>` or `no matches`. Below it is the
@@ -544,14 +546,16 @@ centered overlay):
   text; a match split across wrapped rows is not found. Matching is
   recomputed for each query change.
 - The newest (bottom-most) match is selected first. `↑` and Enter move
-  to the older match; `↓` moves newer; both wrap. Matched characters use
-  `sel` background and the current match uses `pkSel`, preserving any
-  link and token styling. The viewport scrolls to keep the current row
-  visible and roughly centered, with tail-follow disabled.
-- Esc closes find, clears highlights and restores the composer draft;
-  the current transcript scroll position is retained. Mouse wheel still
-  scrolls the transcript. An arriving inline permission request closes
-  find, like other overlays.
+  to the older match; `↓` moves newer; both wrap. Non-current matched
+  characters use the `sel` foreground/background contrast pair; the
+  current match uses `pk` on `pkSel`, preserving any link. The viewport
+  scrolls to keep the current row visible and roughly centered, with
+  tail-follow disabled.
+- Esc closes find and clears highlights. A slash-submitted `/find`
+  restores an empty composer; opening Find from the command panel
+  preserves its current composer draft. The current transcript scroll
+  position is retained. Mouse wheel still scrolls the transcript. An
+  arriving inline permission request closes find, like other overlays.
 
 ## /fusion — Fusion picker
 

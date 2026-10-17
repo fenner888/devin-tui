@@ -703,6 +703,37 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # Submit /find, close it, then send a fresh prompt; stale slash text
+    # would reopen Find instead of sending this prompt.
+    "finddraft": [
+        (6.0, b"\r"),
+        (2.5, b"show find"),
+        (0.3, b"\r"),
+        (4.0, b""),
+        (0.5, b"/find word"),
+        (0.3, b"\r"),
+        (1.0, b""),
+        (0.4, b"\x1b"),
+        (0.3, b"\r"),             # empty composer stays empty; no search reruns
+        (0.4, b""),
+        (0.5, b"x"),
+        (0.3, b"\r"),
+        (1.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # Find on Home has no transcript and should show the flash in the tip slot.
+    "findhome": [
+        (6.0, b"\r"),
+        (3.0, b""),
+        (0.5, b"/find"),
+        (0.3, b"\r"),
+        (0.8, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # focus view via two SGR mouse clicks on a diff row
     # (DRIVE_CLICK=row,col overrides the default target)
     "focusclick": [

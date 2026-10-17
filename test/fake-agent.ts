@@ -519,6 +519,14 @@ async function runLinksTurn(): Promise<'end_turn'> {
 	return 'end_turn';
 }
 
+async function runFindTurn(): Promise<'end_turn'> {
+	await update({
+		sessionUpdate: 'agent_message_chunk',
+		content: text('The word is here; WORD appears again; one more word is here.'),
+	});
+	return 'end_turn';
+}
+
 // ---- resumable sessions (session/list + session/load fixtures) -----------
 
 const FAKE_SESSIONS = () => [
@@ -690,11 +698,11 @@ const agent: Agent = {
 		void update({sessionUpdate: 'user_message_chunk', content: {type: 'text', text}});
 		cancelled = false;
 		await sleep(2500); // mimic real Devin's ~4s TTFT before the first chunk
-		const stopReason = /\blinks?\b/i.test(text)
-			? await runLinksTurn()
-			: promptCount === 1
-				? await runMainTurn()
-				: await runSlowTurn();
+		let stopReason: 'end_turn' | 'cancelled';
+		if (/\blinks?\b/i.test(text)) stopReason = await runLinksTurn();
+		else if (/\bfind\b/i.test(text)) stopReason = await runFindTurn();
+		else if (promptCount === 1) stopReason = await runMainTurn();
+		else stopReason = await runSlowTurn();
 		await emitTurnStats(promptCount - 1);
 		return {stopReason};
 	},

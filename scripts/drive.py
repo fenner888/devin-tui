@@ -685,6 +685,24 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # Search repeated words in the agent reply, move to the older match,
+    # then close find and restore the composer.
+    "find": [
+        (6.0, b"\r"),
+        (2.5, b"show find"),
+        (0.3, b"\r"),
+        (4.0, b""),
+        (0.5, b"/find word"),
+        (0.3, b"\r"),
+        (1.0, b""),
+        (0.4, b"\x1b[A"),         # older match
+        (1.0, b""),
+        (0.4, b"\x1b"),           # close and restore composer
+        (1.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # focus view via two SGR mouse clicks on a diff row
     # (DRIVE_CLICK=row,col overrides the default target)
     "focusclick": [

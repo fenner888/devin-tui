@@ -24,6 +24,18 @@ import {
 import {Line, useTick} from './Line.js';
 import {homeLines} from './home.js';
 import {contentWidth, sessionLines} from './session.js';
+import {
+	getCloudMessages,
+	listCloudSessions,
+	sendCloudMessage,
+	type CloudMessage,
+	type CloudSession,
+} from '../cloud.js';
+import {
+	cloudViewContentHeight,
+	cloudViewLines,
+	type CloudView,
+} from './cloud-view.js';
 import {levelRank, loadCatalog, type CatalogState} from '../catalog.js';
 import {checkForUpdate, runUpdate} from '../update.js';
 import {fmtSpend, fmtTokens, sessionSpend} from '../spend.js';
@@ -93,7 +105,9 @@ import {
 	rowLevelIdx,
 	rowLevels,
 	sortSessions,
+	filterCloudSessions,
 	type FusionView,
+	type CloudPickerView,
 	type PickerView,
 	type ResumeView,
 } from './picker.js';
@@ -147,6 +161,7 @@ const LOCAL_COMMANDS: SlashCommand[] = [
 	{name: 'model', description: 'switch model and effort', local: true},
 	{name: 'fusion', description: 'choose a Fusion lead + sidekick', local: true},
 	{name: 'resume', description: 'resume a previous session', local: true},
+	{name: 'cloud', description: 'view your cloud Devin sessions', local: true},
 	{name: 'find', description: 'search the conversation', local: true},
 	{name: 'handoff', description: 'hand off to a cloud Devin', local: true},
 	{name: 'login', description: 'sign in to the agent', local: true},
@@ -321,6 +336,8 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	const [picker, setPicker] = useState<PickerView | null>(null);
 	const [fusion, setFusion] = useState<FusionView | null>(null);
 	const [resumeView, setResumeView] = useState<ResumeView | null>(null);
+	const [cloudPicker, setCloudPicker] = useState<CloudPickerView | null>(null);
+	const [cloudView, setCloudView] = useState<CloudView | null>(null);
 	const [recentSession, setRecentSession] = useState<{
 		title?: string | null;
 		updatedAt?: string | null;
@@ -368,6 +385,14 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	catalogRef.current = catalog;
 	const resumeRef = useRef<ResumeView | null>(resumeView);
 	resumeRef.current = resumeView;
+	const cloudPickerRef = useRef<CloudPickerView | null>(cloudPicker);
+	cloudPickerRef.current = cloudPicker;
+	const cloudViewRef = useRef<CloudView | null>(cloudView);
+	cloudViewRef.current = cloudView;
+	const cloudRequestBusy = useRef(false);
+	const cloudSendBusy = useRef(false);
+	const cloudPollGeneration = useRef(0);
+	const cloudListRequest = useRef(0);
 	const recentSessionFetched = useRef(false);
 	/** -c/-r session-load intent; survives the auth detour */
 	const pendingResume = useRef(resume);
@@ -667,6 +692,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				type: 'systemMsg',
 				text: '◆ handed off (link copied) → ',
 				bright: url,
+				faint: ' · /cloud to follow it here',
 			});
 		} catch (e) {
 			dispatch({type: 'systemMsg', text: `handoff failed: ${errMsg(e)}`});
@@ -1126,6 +1152,223 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		setResumeView({sel: 0, filter: '', sessions: mine});
 	}, [flash, cwd]);
 
+	const openCloud = useCallback(async () => {
+		if (!process.env.DEVIN_API_KEY) {
+			setCloudPicker(null);
+			dispatch({
+				type: 'systemMsg',
+				text: 'set DEVIN_API_KEY to use /cloud — same key as /handoff',
+			});
+			return;
+		}
+		const request = ++cloudListRequest.current;
+		setCloudPicker({sel: 0, filter: '', sessions: [], loading: true});
+		try {
+			const sessions = await listCloudSessions();
+			if (cloudListRequest.current !== request) return;
+			setCloudPicker(current =>
+				current ? {...current, sessions, loading: false} : current,
+			);
+		} catch (e) {
+			if (cloudListRequest.current !== request) return;
+			setCloudPicker(null);
+			dispatch({
+				type: 'systemMsg',
+				text: `cloud sessions failed: ${errMsg(e)}`,
+			});
+		}
+	}, []);
+
+	const openCloudSession = useCallback((session: CloudSession) => {
+		setCloudPicker(null);
+		cloudListRequest.current++;
+		setCloudView({
+			session,
+			messages: [],
+			scroll: 0,
+			value: '',
+			cursor: 0,
+			loading: true,
+			sending: false,
+		});
+		const load = () => {
+			if (cloudRequestBusy.current) {
+				setTimeout(() => {
+					if (cloudViewRef.current?.session.id === session.id) load();
+				}, 50);
+				return;
+			}
+			cloudRequestBusy.current = true;
+			void getCloudMessages(session.id)
+				.then(messages => {
+					setCloudView(current =>
+						current?.session.id === session.id
+							? {...current, messages, loading: false}
+							: current,
+					);
+				})
+				.catch(e => {
+					setCloudView(current =>
+						current?.session.id === session.id
+							? {...current, loading: false, notice: errMsg(e)}
+							: current,
+					);
+				})
+				.finally(() => {
+					cloudRequestBusy.current = false;
+				});
+		};
+		load();
+	}, []);
+
+	const sendCloudReply = useCallback(async () => {
+		const current = cloudViewRef.current;
+		if (
+			!current ||
+			current.loading ||
+			current.sending ||
+			!current.value.trim()
+		)
+			return;
+		cloudPollGeneration.current++;
+		cloudSendBusy.current = true;
+		const text = current.value.trim();
+		const optimistic: CloudMessage = {
+			from: 'user',
+			text,
+			at: Date.now(),
+		};
+		setCloudView({
+			...current,
+			messages: [...current.messages, optimistic],
+			scroll: 0,
+			value: '',
+			cursor: 0,
+			sending: true,
+			notice: 'sending…',
+		});
+		try {
+			await sendCloudMessage(current.session.id, text);
+			try {
+				const messages = await getCloudMessages(current.session.id);
+				setCloudView(view =>
+					view?.session.id === current.session.id
+						? {
+								...view,
+								messages,
+								sending: false,
+								notice: 'sent',
+								scroll: 0,
+							}
+						: view,
+				);
+			} catch (e) {
+				setCloudView(view =>
+					view?.session.id === current.session.id
+						? {...view, sending: false, notice: errMsg(e)}
+						: view,
+				);
+			}
+		} catch (e) {
+			setCloudView(view =>
+				view?.session.id === current.session.id
+					? {
+							...view,
+							messages: view.messages.filter(message => message !== optimistic),
+							value: current.value,
+							cursor: current.cursor,
+							sending: false,
+							notice: errMsg(e),
+						}
+					: view,
+			);
+		} finally {
+			cloudSendBusy.current = false;
+		}
+	}, []);
+
+	const cloudSessionId = cloudView?.session.id;
+	useEffect(() => {
+		if (!cloudSessionId) return;
+		let live = true;
+		const refreshMessages = async () => {
+			if (
+				cloudRequestBusy.current ||
+				cloudSendBusy.current ||
+				cloudViewRef.current?.sending
+			)
+				return;
+			cloudRequestBusy.current = true;
+			const generation = cloudPollGeneration.current;
+			try {
+				const messages = await getCloudMessages(cloudSessionId);
+				setCloudView(current => {
+					if (
+						!live ||
+						current?.session.id !== cloudSessionId ||
+						generation !== cloudPollGeneration.current
+					)
+						return current;
+					const next = {...current, messages, loading: false};
+					const heightDelta =
+						cloudViewContentHeight(next, cols) -
+						cloudViewContentHeight(current, cols);
+					return {
+						...next,
+						scroll:
+							current.scroll > 0
+								? Math.max(0, current.scroll + heightDelta)
+								: 0,
+					};
+				});
+			} catch (e) {
+				setCloudView(current =>
+					!live ||
+					current?.session.id !== cloudSessionId ||
+					generation !== cloudPollGeneration.current
+						? current
+						: {...current, notice: errMsg(e)},
+				);
+			} finally {
+				cloudRequestBusy.current = false;
+			}
+		};
+		const refreshStatus = async () => {
+			if (
+				cloudRequestBusy.current ||
+				cloudSendBusy.current ||
+				cloudViewRef.current?.sending
+			)
+				return;
+			cloudRequestBusy.current = true;
+			const generation = cloudPollGeneration.current;
+			try {
+				const sessions = await listCloudSessions();
+				const latest = sessions.find(session => session.id === cloudSessionId);
+				if (latest) {
+					setCloudView(current =>
+						!live ||
+						current?.session.id !== cloudSessionId ||
+						generation !== cloudPollGeneration.current
+							? current
+							: {...current, session: latest},
+					);
+				}
+			} catch {
+				// Message polling continues if a status refresh fails.
+			} finally {
+				cloudRequestBusy.current = false;
+			}
+		};
+		const messagesTimer = setInterval(() => void refreshMessages(), 10_000);
+		const statusTimer = setInterval(() => void refreshStatus(), 30_000);
+		return () => {
+			live = false;
+			clearInterval(messagesTimer);
+			clearInterval(statusTimer);
+		};
+	}, [cloudSessionId, cols]);
+
 	const updateFind = useCallback(
 		(query: string, cursor: number, selected?: number) => {
 			const s = stateRef.current;
@@ -1388,6 +1631,12 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				});
 				return;
 			}
+			if (t === '/cloud') {
+				setPrompt({value: '', cursor: 0});
+				setPaletteSel(0);
+				void openCloud();
+				return;
+			}
 			if (
 				working &&
 				(t === '/clear' ||
@@ -1514,7 +1763,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			if (q.length > 0) dispatch({type: 'clearQueue'});
 			sendPrompt(full, [...queuedAtts.current.splice(0), ...imgs]);
 		},
-		[onQuit, openSession, flash, openPicker, openFind, doLogin, doLogout, doStatus, copyReply, doUpdate, sendPrompt, updateSetting, openTheme],
+		[onQuit, openSession, flash, openPicker, openFind, openCloud, doLogin, doLogout, doStatus, copyReply, doUpdate, sendPrompt, updateSetting, openTheme],
 	);
 
 	const cycleMode = useCallback(() => {
@@ -1567,6 +1816,9 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				case 'resume':
 					void openResume();
 					break;
+				case 'cloud':
+					void openCloud();
+					break;
 				case 'model':
 					openPicker();
 					break;
@@ -1609,7 +1861,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 					break;
 			}
 		},
-		[submit, cycleMode, openPicker, openFusion, openResume, doLogin, doLogout, doStatus, copyReply, openFind, openHelp, openTheme, onQuit],
+		[submit, cycleMode, openPicker, openFusion, openResume, openCloud, doLogin, doLogout, doStatus, copyReply, openFind, openHelp, openTheme, onQuit],
 	);
 
 	// ---- input ----------------------------------------------------------------
@@ -1662,7 +1914,9 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			settingsOpenRef.current ||
 			themeViewRef.current !== null ||
 			focusRef.current !== null ||
-			handoffRef.current !== null
+			handoffRef.current !== null ||
+			cloudPickerRef.current !== null ||
+			cloudViewRef.current !== null
 		);
 	}, []);
 
@@ -1682,6 +1936,14 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			setFocus(null);
 		}
 	}, [focus, state.permission, state.items]);
+
+	useEffect(() => {
+		if (state.permission) {
+			cloudListRequest.current++;
+			setCloudPicker(null);
+			setCloudView(null);
+		}
+	}, [state.permission]);
 
 	// @file mention state — the open token under the cursor, the lazily
 	// loaded project file list, and the filtered dropdown rows
@@ -1712,6 +1974,25 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 
 	// bracketed paste arrives as one string — real newlines, never a send
 	usePaste(text => {
+		const cv = cloudViewRef.current;
+		if (cv) {
+			const pasted = text.replace(/\r\n|\r|\n/g, ' ');
+			setCloudView({
+				...cv,
+				value:
+					cv.value.slice(0, cv.cursor) +
+					pasted +
+					cv.value.slice(cv.cursor),
+				cursor: cv.cursor + pasted.length,
+			});
+			return;
+		}
+		const cp = cloudPickerRef.current;
+		if (cp) {
+			const pasted = text.replace(/\r\n|\r|\n/g, ' ');
+			setCloudPicker({...cp, filter: cp.filter + pasted, sel: 0});
+			return;
+		}
 		const fv = findRef.current;
 		if (fv) {
 			const pasted = text.replace(/\r?\n/g, ' ');
@@ -1759,8 +2040,21 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		const m = parseMouse(input);
 		if (m !== undefined) {
 			if (m?.kind === 'wheel') {
+				const cv = cloudViewRef.current;
 				const f = focusRef.current;
-				if (f) {
+				if (cv) {
+					const max = Math.max(
+						0,
+						cloudViewContentHeight(cv, cols) - Math.max(0, rows - 6),
+					);
+					setCloudView({
+						...cv,
+						scroll: Math.max(
+							0,
+							Math.min(max, cv.scroll + (m.dir === 'up' ? 3 : -3)),
+						),
+					});
+				} else if (f) {
 					const max = Math.max(
 						0,
 						focusContentHeight(s, f.id, cols, animTickRef.current) -
@@ -1783,6 +2077,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			} else if (m?.kind === 'release') {
 				const press = lastLeftPress.current;
 				lastLeftPress.current = null;
+				if (cloudViewRef.current || cloudPickerRef.current) return;
 				if (
 					press &&
 					(press.y !== m.y || Math.abs(press.x - m.x) > 2)
@@ -1812,6 +2107,8 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 					pickerRef.current !== null ||
 					fusionRef.current !== null ||
 					resumeRef.current !== null ||
+					cloudPickerRef.current !== null ||
+					cloudViewRef.current !== null ||
 					panelOpenRef.current ||
 					helpOpenRef.current ||
 					settingsOpenRef.current ||
@@ -1885,6 +2182,94 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		if (s.loading) return;
 		// home screen ignores typing until the session is ready
 		if (s.turns === 0 && s.status !== 'idle') return;
+
+		const cv = cloudViewRef.current;
+		if (cv) {
+			if (s.permission) {
+				setCloudView(null);
+				return;
+			}
+			const maxScroll = Math.max(
+				0,
+				cloudViewContentHeight(cv, cols) - Math.max(0, rows - 6),
+			);
+			if (key.escape) {
+				setCloudView(null);
+			} else if (key.ctrl && input === 'o' && cv.session.url) {
+				execFile(
+					process.platform === 'darwin' ? 'open' : 'xdg-open',
+					[cv.session.url],
+					() => {},
+				);
+			} else if (key.upArrow || key.downArrow) {
+				setCloudView({
+					...cv,
+					scroll: Math.max(
+						0,
+						Math.min(
+							maxScroll,
+							cv.scroll + (key.upArrow ? 1 : -1),
+						),
+					),
+				});
+			} else if (key.pageUp || key.pageDown) {
+				setCloudView({
+					...cv,
+					scroll: Math.max(
+						0,
+						Math.min(
+							maxScroll,
+							cv.scroll +
+								(key.pageUp ? Math.max(1, rows - 8) : -Math.max(1, rows - 8)),
+						),
+					),
+				});
+			} else if (key.return) {
+				void sendCloudReply();
+			} else if (key.leftArrow || key.rightArrow) {
+				setCloudView({
+					...cv,
+					cursor: Math.max(
+						0,
+						Math.min(
+							cv.value.length,
+							cv.cursor + (key.rightArrow ? 1 : -1),
+						),
+					),
+				});
+			} else if (key.home || (key.ctrl && input === 'a')) {
+				setCloudView({...cv, cursor: 0});
+			} else if (key.end || (key.ctrl && input === 'e')) {
+				setCloudView({...cv, cursor: cv.value.length});
+			} else if (key.backspace || key.delete) {
+				if (key.backspace && cv.cursor > 0) {
+					setCloudView({
+						...cv,
+						value:
+							cv.value.slice(0, cv.cursor - 1) +
+							cv.value.slice(cv.cursor),
+						cursor: cv.cursor - 1,
+					});
+				} else if (key.delete && cv.cursor < cv.value.length) {
+					setCloudView({
+						...cv,
+						value:
+							cv.value.slice(0, cv.cursor) +
+							cv.value.slice(cv.cursor + 1),
+					});
+				}
+			} else if (input && !key.ctrl && !key.meta) {
+				setCloudView({
+					...cv,
+					value:
+						cv.value.slice(0, cv.cursor) +
+						input +
+						cv.value.slice(cv.cursor),
+					cursor: cv.cursor + input.length,
+				});
+			}
+			return;
+		}
 
 		// model picker captures all input while open
 		const pk = pickerRef.current;
@@ -2070,6 +2455,28 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				setResumeView({...rv, filter: rv.filter.slice(0, -1), sel: 0});
 			} else if (input && !key.ctrl && !key.meta) {
 				setResumeView({...rv, filter: rv.filter + input, sel: 0});
+			}
+			return;
+		}
+
+		const cp = cloudPickerRef.current;
+		if (cp) {
+			const list = filterCloudSessions(cp.sessions, cp.filter);
+			const n = Math.max(1, list.length);
+			if (key.escape) {
+				cloudListRequest.current++;
+				setCloudPicker(null);
+			} else if (key.upArrow) {
+				setCloudPicker({...cp, sel: (cp.sel - 1 + n) % n});
+			} else if (key.downArrow) {
+				setCloudPicker({...cp, sel: (cp.sel + 1) % n});
+			} else if (key.return) {
+				const target = list[Math.min(cp.sel, list.length - 1)];
+				if (target) openCloudSession(target);
+			} else if (key.backspace || key.delete) {
+				setCloudPicker({...cp, filter: cp.filter.slice(0, -1), sel: 0});
+			} else if (input && !key.ctrl && !key.meta) {
+				setCloudPicker({...cp, filter: cp.filter + input, sel: 0});
 			}
 			return;
 		}
@@ -2542,7 +2949,10 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	const mentionSelC = Math.min(mentionSel, Math.max(0, mentionItems.length - 1));
 
 	let lines: Seg[][];
-	if (focus) {
+	if (cloudView) {
+		rowItem.current = [];
+		lines = cloudViewLines(cloudView, cols, rows, animTick);
+	} else if (focus) {
 		// full-screen focus view — replaces the session screen entirely
 		rowItem.current = [];
 		lines = focusLines(
@@ -2568,6 +2978,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				picker: picker ?? undefined,
 				fusion: fusion ?? undefined,
 				resume: resumeView ?? undefined,
+				cloudPicker: cloudPicker ?? undefined,
 				paletteSel,
 				slashItems,
 				slashTop: slashTop.current,
@@ -2603,6 +3014,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				modelPicker: picker ?? undefined,
 				fusion: fusion ?? undefined,
 				resume: resumeView ?? undefined,
+				cloudPicker: cloudPicker ?? undefined,
 				find: findView ?? undefined,
 				permSel,
 				handoff: handoff ?? undefined,

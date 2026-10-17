@@ -10,6 +10,7 @@
  * logged or written to disk.
  */
 import {execFile} from 'node:child_process';
+import {apiBase} from './cloud.js';
 
 const MAX_DIFF_BYTES = 102400; // 100KB, same as the script
 
@@ -121,35 +122,17 @@ export interface HandoffRequest {
 
 /** Build the POST request the script would send for `create`. */
 export function handoffRequest(prompt: string, task: string): HandoffRequest {
-	const apiUrl = (
-		process.env.DEVIN_API_URL ?? 'https://api.devin.ai'
-	).replace(/\/+$/, '');
-	const key = process.env.DEVIN_API_KEY ?? '';
-	const org = process.env.DEVIN_ORG_ID ?? '';
+	const {base, headers, kind} = apiBase();
 	const uid = process.env.DEVIN_USER_ID ?? '';
-	let base: string;
-	if (key.startsWith('cog_')) {
-		if (!org) {
-			throw new Error(
-				'DEVIN_ORG_ID is required for service keys (cog_*)',
-			);
-		}
-		base = `${apiUrl}/v3/organizations/${org}`;
-	} else {
-		base = `${apiUrl}/v1`;
-	}
 	const body: HandoffBody = {
 		prompt,
 		title: task.slice(0, 100),
 		tags: ['handoff'],
 	};
-	if (uid && key.startsWith('cog_')) body.create_as_user_id = uid;
+	if (uid && kind === 'v3') body.create_as_user_id = uid;
 	return {
 		url: `${base}/sessions`,
-		headers: {
-			Authorization: `Bearer ${key}`,
-			'Content-Type': 'application/json',
-		},
+		headers,
 		body,
 	};
 }

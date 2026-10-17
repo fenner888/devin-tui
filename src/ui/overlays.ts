@@ -71,6 +71,7 @@ export interface PanelItem {
 		| {type: 'insert'; text: string}
 		| {type: 'help'}
 		| {type: 'resume'}
+		| {type: 'cloud'}
 		| {type: 'settings'}
 		| {type: 'theme'}
 		| {type: 'zoom'}
@@ -89,6 +90,7 @@ export const LOCAL_RESERVED = new Set([
 	'handoff',
 	'fusion',
 	'resume',
+	'cloud',
 	'help',
 	'settings',
 	'theme',
@@ -150,6 +152,13 @@ export function panelItems(s: State): PanelItem[] {
 			desc: 'resume a previous session',
 			hint: '/resume',
 			action: {type: 'resume'},
+		},
+		{
+			section: 'Session',
+			label: 'Cloud sessions',
+			desc: 'view your cloud Devin sessions',
+			hint: '/cloud',
+			action: {type: 'cloud'},
 		},
 		{
 			section: 'Session',

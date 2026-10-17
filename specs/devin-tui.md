@@ -303,7 +303,7 @@ A vertically + horizontally centered column:
 
 1. The 2× braille mark (with shimmer).
 2. `Devin` bold bright + ` TUI` muted; below, muted
-   `v0.3.4 · <agentInfo.title once known>`.
+   `v0.3.5 · <agentInfo.title once known>`.
 3. The input panel (composer), width `min(78, cols-8)` — a rounded bezel
    frame `╭─…─╮` / `│ … │` / `╰─…─╯` drawn in `bezel*` tokens on the screen
    `bg`, with `panel` bg inside and 1 col of horizontal padding. Content
@@ -326,7 +326,7 @@ A vertically + horizontally centered column:
    ` <mode name> ` muted — or ` bypass permissions on ` in `pkYellow`
    when the mode id is `bypass`; the shimmer band recolors only border
    cells, never the tag text. Popups (slash/@ dropdown, model/fusion/
-   resume pickers, handoff confirm) OVERLAY the screen rows directly
+   resume/cloud pickers, handoff confirm) OVERLAY the screen rows directly
    above the composer, flush on its top border at the same width — they
    are not part of the centered block, so the logo, title and composer
    never move when one opens or narrows; they may cover the title and
@@ -350,7 +350,7 @@ A vertically + horizontally centered column:
    ~5 tips every ~10s. An active flash while idle temporarily replaces this
    status row with `● <flash>`; when it expires, the tip/Recent line returns.
 6. Corners: bottom-left `~cwd` muted + ` (<branch>)` faint (omitted
-   outside a git repo), bottom-right `v0.3.4` faint — plus ` · update `
+   outside a git repo), bottom-right `v0.3.5` faint — plus ` · update `
    muted + `v<latest>` bright + ` available — type /update` muted when an
    update check found a newer version — inset 2 cols on
    both sides and placed at `rows-3` (two blank rows below), matching
@@ -789,10 +789,10 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   `/copy` (copies the most recent agent reply and flashes `copied Devin's
   last reply`, or `nothing to copy yet`; works while Devin is working),
   `/update` (runs the CLI updater with captured output and a 120-second
-  timeout), `/handoff [task]` (see below), `/fusion` (see below), `/resume` (see
+  timeout), `/handoff [task]` (see below), `/cloud` (see below), `/fusion` (see below), `/resume` (see
   above — session picker), `/help` (see
   Overlays → Help). Agent-advertised commands named `login`,
-  `logout`, `status`, `copy`, `update`, `model`, `handoff`, `fusion`, `resume` or `help` are filtered out of
+  `logout`, `status`, `copy`, `update`, `model`, `handoff`, `cloud`, `fusion`, `resume` or `help` are filtered out of
   the Agent section and slash dropdown so local commands always win.
 
 ## Spend tracking
@@ -851,7 +851,8 @@ locally, mirroring the open-source `devin-handoff.sh` `create` exactly
 - Task = the `/handoff` args, else `Continue where the local session left
   off.`
 - On success the returned URL is copied to the clipboard and shown in the
-  system line as a terminal hyperlink.
+  system line as a terminal hyperlink, followed by faint
+  ` · /cloud to follow it here`.
 - Confirmation block renders above the composer (same slot as the slash
   dropdown): `Hand off to a cloud Devin?` bright, faint rows `repo
   <slug|none> · branch <b|none> · diff <n> KB · context <n> KB` and
@@ -866,6 +867,60 @@ locally, mirroring the open-source `devin-handoff.sh` `create` exactly
   (git/context gather) — a failed `prepareHandoff` is caught and
   reported, never an unhandled rejection.
 
+## /cloud — follow and reply to cloud Devin sessions
+
+`/cloud` is a local command (`view your cloud Devin sessions`), reserved
+from agent-advertised commands and listed in the command panel's Session
+section as **Cloud sessions** with hint `/cloud`. It is available while
+the local ACP agent is working because it does not touch that session.
+Without `DEVIN_API_KEY`, it prints exactly
+`set DEVIN_API_KEY to use /cloud — same key as /handoff`.
+
+The API layer (`src/cloud.ts`) shares `/handoff`'s `DEVIN_API_KEY`,
+`DEVIN_ORG_ID`, `DEVIN_USER_ID`, and `DEVIN_API_URL` routing. Personal
+keys use `/v1`; `cog_` service keys use
+`/v3/organizations/{DEVIN_ORG_ID}`. Requests time out after 15 seconds,
+errors redact the key, and no cloud call is made by tests except against
+the local fake API.
+
+- The inline picker uses the `/resume` slot and chrome: title
+  `Cloud sessions`, filter prompt `/ type to search`, selected session
+  title (or `Untitled`) with right-aligned faint `<status> · <relative
+  time>`, and `Loading cloud sessions…` while loading. Enter opens the
+  selected session; Esc closes it. List failures are system lines.
+- v1 lists with `GET /sessions?limit=20`; v3 uses
+  `GET /sessions?first=20` and retries without parameters on HTTP 422.
+  The newest 20 sessions are shown newest first. v1 status prefers
+  `status_enum` and its app URL derives from `session_id` with `devin-`
+  removed; v3 uses the API's session URL.
+- The full-screen view has header `▸ Cloud · <title> · <status>` with
+  the title linked to its session URL, then a rule. Messages render
+  oldest-to-newest using the normal user and Markdown agent renderers,
+  with a blank row between messages. It tail-follows until the user
+  scrolls with ↑/↓, PgUp/PgDn, or the wheel.
+- The single-line `reply ❯ <text>` input has an inverse-block cursor;
+  pasted line breaks become spaces. Enter sends non-empty text, adding an
+  optimistic user message and then refetching. Empty Enter does nothing.
+  The faint footer is `↵ send · ↑↓ scroll · ctrl+o open in browser · esc
+  close`, with sending/sent/error flashes. Ctrl+O opens the session URL
+  with `open` on macOS or `xdg-open` elsewhere.
+- Messages refresh every 10 seconds without overlapping requests;
+  session status refreshes by re-listing every 30 seconds. Closing stops
+  polling, leaves the local composer draft intact, and a local permission
+  request closes the cloud view.
+- v1 messages use `GET /sessions/{id}` with a 404 fallback to
+  `/session/{id}`; message sends use `POST /sessions/{id}/message` with a
+  singular fallback on 404. v1 message `type` containing `user` maps to
+  user; other messages map to Devin. A 200 send response containing
+  `detail` is treated as an error.
+- v3 message ids are prefixed with `devin-` when missing. Messages use
+  `GET /sessions/{id}/messages?first=100`, following `end_cursor` for at
+  most five pages and retaining the newest 200. Sends use
+  `POST /sessions/{id}/messages` with `{message}` and include
+  `message_as_user_id` when `DEVIN_USER_ID` is set.
+- A successful `/handoff` system line appends the faint suffix
+  ` · /cloud to follow it here`.
+
 ## Overlays
 
 While an overlay is open the underlying screen is re-rendered with every
@@ -879,8 +934,9 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
   headed by muted labels (**Session**, **Agent**, **Account**, **App**)
   separated by a blank row — **Session** (New session → `/clear`, Toggle
   plan, Cycle mode, Toggle command output → `ctrl+o`, Copy last reply →
-  `/copy`, Find in conversation → `/find`, Hand off to cloud Devin → `/handoff`, Switch to Fusion →
-  `/fusion`, Switch model → `/model`, Resume session → `/resume`),
+  `/copy`, Find in conversation → `/find`, Hand off to cloud Devin → `/handoff`,
+  Cloud sessions → `/cloud`, Switch to Fusion → `/fusion`, Switch model →
+  `/model`, Resume session → `/resume`),
   **Agent** (every advertised
   ACP command minus the locally-handled names), **Account** (Sign in, Sign
   out, Status), **App** (Help → `/help`, Quit). Items are

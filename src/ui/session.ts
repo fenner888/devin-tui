@@ -18,7 +18,9 @@ import {
 	fusionData,
 	fusionLines,
 	pickerLines,
+	cloudPickerLines,
 	resumeLines,
+	type CloudPickerView,
 	type FusionView,
 	type PickerView,
 	type ResumeView,
@@ -48,6 +50,7 @@ export interface SessionUI {
 	modelPicker?: PickerView; // /model picker state, above the input panel
 	fusion?: FusionView; // /fusion picker state, above the input panel
 	resume?: ResumeView; // /resume picker state, above the input panel
+	cloudPicker?: CloudPickerView;
 	permSel: number; // selected option in the inline permission prompt
 	handoff?: HandoffInfo; // /handoff confirmation, above the input panel
 	find?: {query: string; cursor: number; selected: number; end: number};
@@ -131,6 +134,9 @@ export function sessionLines(
 	const resumeRows = ui.resume
 		? resumeLines(ui.resume, s.sessionId, s.cwd, w)
 		: [];
+	const cloudRows = ui.cloudPicker
+		? cloudPickerLines(ui.cloudPicker, w)
+		: [];
 	const aux = [
 		...plan,
 		...(plan.length > 0 ? [blankLine(w)] : []),
@@ -141,7 +147,11 @@ export function sessionLines(
 	// transcript area; whatever still overflows keeps its bottom rows
 	const pkMax = Math.max(
 		6,
-		transH - dropdown.length - handoffRows.length - resumeRows.length,
+		transH -
+			dropdown.length -
+			handoffRows.length -
+			resumeRows.length -
+			cloudRows.length,
 	);
 	const modelOpt =
 		ui.modelPicker || ui.fusion ? findConfigOption(s, 'model') : undefined;
@@ -171,6 +181,7 @@ export function sessionLines(
 		...modelPk,
 		...fusionRows,
 		...resumeRows,
+		...cloudRows,
 		...dropdown,
 		...handoffRows,
 	];

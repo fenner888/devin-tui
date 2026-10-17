@@ -103,6 +103,67 @@ export function linkify(segs: Seg[]): Seg[] {
 	return out;
 }
 
+export interface TextRange {
+	start: number;
+	end: number;
+}
+
+export interface FindMatch extends TextRange {
+	row: number;
+}
+
+export function findMatches(lines: Seg[][], query: string): FindMatch[] {
+	const needle = query.toLowerCase();
+	if (!needle) return [];
+	const matches: FindMatch[] = [];
+	for (const [row, segs] of lines.entries()) {
+		const text = segs.map(s => s.t).join('');
+		const lower = text.toLowerCase();
+		let from = 0;
+		while (from <= lower.length - needle.length) {
+			const start = lower.indexOf(needle, from);
+			if (start < 0) break;
+			matches.push({row, start, end: start + needle.length});
+			from = start + needle.length;
+		}
+	}
+	return matches;
+}
+
+export function highlightRow(
+	segs: Seg[],
+	ranges: TextRange[],
+	currentRange?: TextRange,
+): Seg[] {
+	const sorted = [...ranges].sort((a, b) => a.start - b.start);
+	const out: Seg[] = [];
+	let rowOffset = 0;
+	for (const source of segs) {
+		let local = 0;
+		for (const range of sorted) {
+			const start = Math.max(0, range.start - rowOffset);
+			const end = Math.min(source.t.length, range.end - rowOffset);
+			if (end <= local || start >= source.t.length) continue;
+			if (start > local) out.push({...source, t: source.t.slice(local, start)});
+			const from = Math.max(local, start);
+			const current =
+				currentRange?.start === range.start &&
+				currentRange.end === range.end;
+			out.push({
+				...source,
+				t: source.t.slice(from, end),
+				k: current ? 'sel' : 'pk',
+				bg: current ? 'sel' : 'pkSel',
+			});
+			local = end;
+		}
+		if (local < source.t.length)
+			out.push({...source, t: source.t.slice(local)});
+		rowOffset += source.t.length;
+	}
+	return out;
+}
+
 /** Display width of a code point (0 = combining/control, 2 = wide). */
 export function cpWidth(cp: number): number {
 	if (cp === 0) return 0;

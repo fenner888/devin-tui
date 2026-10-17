@@ -303,7 +303,7 @@ A vertically + horizontally centered column:
 
 1. The 2× braille mark (with shimmer).
 2. `Devin` bold bright + ` TUI` muted; below, muted
-   `v0.3.2 · <agentInfo.title once known>`.
+   `v0.3.3 · <agentInfo.title once known>`.
 3. The input panel (composer), width `min(78, cols-8)` — a rounded bezel
    frame `╭─…─╮` / `│ … │` / `╰─…─╯` drawn in `bezel*` tokens on the screen
    `bg`, with `panel` bg inside and 1 col of horizontal padding. Content
@@ -340,9 +340,10 @@ A vertically + horizontally centered column:
    faint `q to quit` line follows; errors show the message + log path +
    `press q to quit`. Once ready: one rotating tip line
    `● Tip  <key> <text>` (● / Tip / key bright, rest muted) cycling ~5 tips
-   every ~10s.
+   every ~10s. An active flash while idle temporarily replaces this
+   status row with `● <flash>`; when it expires, the tip/Recent line returns.
 6. Corners: bottom-left `~cwd` muted + ` (<branch>)` faint (omitted
-   outside a git repo), bottom-right `v0.3.2` faint — plus ` · update `
+   outside a git repo), bottom-right `v0.3.3` faint — plus ` · update `
    muted + `v<latest>` bright + ` available — type /update` muted when an
    update check found a newer version — inset 2 cols on
    both sides and placed at `rows-3` (two blank rows below), matching
@@ -527,6 +528,34 @@ centered overlay):
   item — a live turn's own echo is still suppressed so submitted text
   never double-renders. Turn count = number of replayed user messages.
   After loading, the session screen shows (not home), tail-followed.
+
+## /find — search the conversation
+
+- `/find [text]` is a local command (`search the conversation`) and is
+  reserved from agent-advertised commands. The command panel's Session
+  section lists **Find in conversation** with hint `/find`. With no
+  transcript on Home, it flashes `nothing to search yet` in the tip/Recent
+  row slot until the flash expires, then restores the tip or Recent row.
+- The find bar replaces the composer in the same slot, frame style and
+  height. Its first row is `find ❯ <query>` with an inverse-block cursor;
+  the right side shows faint `<i>/<n>` or `no matches`. Below it is the
+  faint hint `↑↓ prev/next · ↵ older · esc close`.
+- `/find text` starts with `text` as the query. While open, typing edits
+  only the query. An empty query has no matches. Matches are
+  case-insensitive substrings of each laid-out transcript row's plain
+  text; a match split across wrapped rows is not found. Matching is
+  recomputed for each query change.
+- The newest (bottom-most) match is selected first. `↑` and Enter move
+  to the older match; `↓` moves newer; both wrap. The current match uses
+  the `sel` foreground/background contrast pair; other matches use `pk`
+  on `pkSel`, preserving any link. The viewport
+  scrolls to keep the current row visible and roughly centered, with
+  tail-follow disabled.
+- Esc closes find and clears highlights. A slash-submitted `/find`
+  restores an empty composer; opening Find from the command panel
+  preserves its current composer draft. The current transcript scroll
+  position is retained. Mouse wheel still scrolls the transcript. An
+  arriving inline permission request closes find, like other overlays.
 
 ## /fusion — Fusion picker
 
@@ -843,7 +872,7 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
   headed by muted labels (**Session**, **Agent**, **Account**, **App**)
   separated by a blank row — **Session** (New session → `/clear`, Toggle
   plan, Cycle mode, Toggle command output → `ctrl+o`, Copy last reply →
-  `/copy`, Hand off to cloud Devin → `/handoff`, Switch to Fusion →
+  `/copy`, Find in conversation → `/find`, Hand off to cloud Devin → `/handoff`, Switch to Fusion →
   `/fusion`, Switch model → `/model`, Resume session → `/resume`),
   **Agent** (every advertised
   ACP command minus the locally-handled names), **Account** (Sign in, Sign
@@ -904,6 +933,8 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
   open: ↑/↓ scroll, ←/→ prev/next item, pgup/pgdn page, home/end jump,
   `c` copy, wheel ±3, esc/q close. `/settings`, `/theme`, `/zoom` manage
   the persistent settings (see /settings and /theme).
+- `/find [text]`: search laid-out transcript rows; `↑`/Enter older,
+  `↓` newer, Esc closes and keeps the current scroll position.
 
 ## State
 

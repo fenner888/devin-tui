@@ -3,6 +3,8 @@ import {
 	seg,
 	padSegs,
 	blankLine,
+	findMatches,
+	highlightRow,
 } from './lines.js';
 import {
 	transcriptLayout,
@@ -10,7 +12,7 @@ import {
 	moreMarker,
 	statusBar,
 } from './transcript.js';
-import {inputPanel, shortCwd} from './panel.js';
+import {findPanel, inputPanel, shortCwd} from './panel.js';
 import {handoffBlock, slashMenuBlock, type HandoffInfo} from './overlays.js';
 import {
 	fusionData,
@@ -48,6 +50,7 @@ export interface SessionUI {
 	resume?: ResumeView; // /resume picker state, above the input panel
 	permSel: number; // selected option in the inline permission prompt
 	handoff?: HandoffInfo; // /handoff confirmation, above the input panel
+	find?: {query: string; cursor: number; selected: number; end: number};
 	catalog: CatalogState; // model pricing catalog (pickers)
 }
 
@@ -71,7 +74,11 @@ export function sessionLines(
 	cols: number,
 	rows: number,
 	width: 'compact' | 'comfortable' | 'wide' = 'comfortable',
-): {lines: Seg[][]; rowItem: (string | undefined)[]} {
+): {
+	lines: Seg[][];
+	rowItem: (string | undefined)[];
+	transcriptHeight: number;
+} {
 	const w = contentWidth(cols, width);
 	const x = Math.max(0, Math.floor((cols - w) / 2));
 	const frame = (line: Seg[]): Seg[] =>
@@ -80,21 +87,42 @@ export function sessionLines(
 	// bottom-fixed blocks (nearest input last); the dropdown stays flush on
 	// the input panel while the plan gets a blank-row gap on both sides
 	const plan = s.sidebar ? planLines(s, w, ui.tick) : [];
+	const layout = transcriptLayout(s, w, ui.tick, ui.permSel);
+	const all = layout.lines;
+	const matches = ui.find ? findMatches(all, ui.find.query) : [];
+	const selected = ui.find
+		? matches[Math.min(ui.find.selected, matches.length - 1)]
+		: undefined;
+	const effectiveEnd = ui.find
+		? Math.min(all.length, Math.max(0, ui.find.end))
+		: Math.max(0, all.length - ui.scrollOffset);
+	const effectiveOffset = Math.max(0, all.length - effectiveEnd);
 	const dropdown = ui.slashOpen
 		? slashMenuBlock(ui.slashItems, ui.paletteSel, w, '/', ui.slashTop)
 		: ui.mentionOpen
 			? slashMenuBlock(ui.mentionItems, ui.mentionSel, w, '@')
 			: [];
 	const marker =
-		ui.scrollOffset > 0 ? [moreMarker(ui.scrollOffset, w)] : [];
-	const input = inputPanel(w, ui.value, ui.cursor, ui.tick, {
+		effectiveOffset > 0 ? [moreMarker(effectiveOffset, w)] : [];
+	const meta = {
 		ready: !!s.sessionId,
 		mode: displayMode(s),
 		modeId: s.mode,
 		model: displayModel(s),
 		cwd: shortCwd(s.cwd),
 		working: s.status === 'working',
-	}, ui.chips);
+	};
+	const input = ui.find
+		? findPanel(
+				w,
+				ui.find.query,
+				ui.find.cursor,
+				ui.tick,
+				meta,
+				selected ? ui.find.selected + 1 : 0,
+				matches.length,
+			)
+		: inputPanel(w, ui.value, ui.cursor, ui.tick, meta, ui.chips);
 	// pickers, the dropdown and the handoff confirm are POPUPS: they
 	// overlay the bottom of the transcript area (spliced in below) rather
 	// than shrinking it, so the transcript doesn't scroll when they open
@@ -147,11 +175,15 @@ export function sessionLines(
 		...handoffRows,
 	];
 
-	const layout = transcriptLayout(s, w, ui.tick, ui.permSel);
-	const all = layout.lines;
-	const end = Math.max(0, all.length - ui.scrollOffset);
+	const end = effectiveEnd;
 	const start = Math.max(0, end - transH);
-	const view = all.slice(start, end);
+	const view = all.slice(start, end).map((line, i) => {
+		if (!ui.find) return line;
+		const row = start + i;
+		const ranges = matches.filter(match => match.row === row);
+		const current = selected?.row === row ? selected : undefined;
+		return highlightRow(line, ranges, current);
+	});
 	const fillTop = transH - view.length;
 
 	// transcript row index → item id (separators/permission rows unmapped)
@@ -216,5 +248,5 @@ export function sessionLines(
 		lines.length = rows;
 		rowItem.length = rows;
 	}
-	return {lines, rowItem};
+	return {lines, rowItem, transcriptHeight: transH};
 }

@@ -67,6 +67,7 @@ export interface PanelItem {
 		| {type: 'logout'}
 		| {type: 'status'}
 		| {type: 'copy'}
+		| {type: 'find'}
 		| {type: 'insert'; text: string}
 		| {type: 'help'}
 		| {type: 'resume'}
@@ -82,6 +83,7 @@ export const LOCAL_RESERVED = new Set([
 	'logout',
 	'status',
 	'copy',
+	'find',
 	'update',
 	'model',
 	'handoff',
@@ -134,6 +136,13 @@ export function panelItems(s: State): PanelItem[] {
 			desc: "copy Devin's last reply",
 			hint: '/copy',
 			action: {type: 'copy'},
+		},
+		{
+			section: 'Session',
+			label: 'Find in conversation',
+			desc: 'search the conversation',
+			hint: '/find',
+			action: {type: 'find'},
 		},
 		{
 			section: 'Session',

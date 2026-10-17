@@ -231,7 +231,7 @@ export function segStyle(
 	return out;
 }
 
-export const VERSION = 'v0.3.2';
+export const VERSION = 'v0.3.3';
 
 export const BRAILLE_LOGO = [
 	'⠀⣴⣾⣶⡄⠀⠀⠀⠀',

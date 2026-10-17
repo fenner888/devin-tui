@@ -97,7 +97,7 @@ import {
 	type PickerView,
 	type ResumeView,
 } from './picker.js';
-import {transcriptDigest} from './transcript.js';
+import {transcriptDigest, transcriptLayout} from './transcript.js';
 import {
 	buildHandoffPrompt,
 	currentBranch,
@@ -107,7 +107,7 @@ import {
 import {copyToClipboard} from '../clipboard.js';
 import {parseMouse, selectModifier, setMouseReporting} from '../mouse.js';
 import {execFile} from 'node:child_process';
-import {findHttpUrls, type Seg} from './lines.js';
+import {findHttpUrls, findMatches, type Seg} from './lines.js';
 
 function errMsg(e: unknown): string {
 	if (e instanceof RequestError) return `${e.message} (code ${e.code})`;
@@ -118,6 +118,21 @@ function errMsg(e: unknown): string {
 function lastNonEmptyLine(text: string): string {
 	const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
 	return lines[lines.length - 1] ?? '';
+}
+
+type FindView = {
+	query: string;
+	cursor: number;
+	selected: number;
+	end: number;
+};
+
+function centeredEnd(total: number, row: number, height: number): number {
+	const minEnd = Math.min(total, height);
+	return Math.max(
+		minEnd,
+		Math.min(total, row + Math.floor(height / 2) + 1),
+	);
 }
 
 function isAuthError(e: unknown): boolean {
@@ -132,6 +147,7 @@ const LOCAL_COMMANDS: SlashCommand[] = [
 	{name: 'model', description: 'switch model and effort', local: true},
 	{name: 'fusion', description: 'choose a Fusion lead + sidekick', local: true},
 	{name: 'resume', description: 'resume a previous session', local: true},
+	{name: 'find', description: 'search the conversation', local: true},
 	{name: 'handoff', description: 'hand off to a cloud Devin', local: true},
 	{name: 'login', description: 'sign in to the agent', local: true},
 	{name: 'logout', description: 'sign out of the agent', local: true},
@@ -263,6 +279,11 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	const slashTop = useRef(0);
 	const [permSel, setPermSel] = useState(0);
 	const [scrollOffset, setScrollOffset] = useState(0);
+	const [findView, setFindView] = useState<FindView | null>(null);
+	const findRef = useRef<FindView | null>(findView);
+	findRef.current = findView;
+	const findViewportHeight = useRef(1);
+	const findDraft = useRef<{value: string; cursor: number} | null>(null);
 	// /settings + /theme overlays
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [settingsSel, setSettingsSel] = useState(0);
@@ -1099,6 +1120,68 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		setResumeView({sel: 0, filter: '', sessions: mine});
 	}, [flash, cwd]);
 
+	const updateFind = useCallback(
+		(query: string, cursor: number, selected?: number) => {
+			const s = stateRef.current;
+			const w = contentWidth(cols, effSettingsRef.current.width);
+			const lines = transcriptLayout(
+				s,
+				w,
+				animTickRef.current,
+				permSel,
+			).lines;
+			const matches = findMatches(lines, query);
+			const index =
+				matches.length === 0
+					? -1
+					: Math.max(
+							0,
+							Math.min(selected ?? matches.length - 1, matches.length - 1),
+						);
+			const match = matches[index];
+			const end = match
+				? centeredEnd(lines.length, match.row, findViewportHeight.current)
+				: Math.min(
+						lines.length,
+						findRef.current?.end ??
+							Math.max(0, lines.length - scrollOffset),
+					);
+			setFindView({query, cursor, selected: index, end});
+			setScrollOffset(Math.max(0, lines.length - end));
+		},
+		[cols, permSel, scrollOffset],
+	);
+
+	const openFind = useCallback(
+		(query: string, draft: {value: string; cursor: number}) => {
+			if (stateRef.current.items.length === 0) {
+				flash('nothing to search yet');
+				return;
+			}
+			findDraft.current = draft;
+			updateFind(query, query.length);
+		},
+		[flash, updateFind],
+	);
+
+	const scrollFind = useCallback(
+		(direction: 'up' | 'down') => {
+			const current = findRef.current;
+			if (!current) return;
+			const s = stateRef.current;
+			const w = contentWidth(cols, effSettingsRef.current.width);
+			const total = transcriptLayout(s, w, animTickRef.current, permSel).lines.length;
+			const minEnd = Math.min(total, findViewportHeight.current);
+			const end = Math.max(
+				minEnd,
+				Math.min(total, current.end + (direction === 'up' ? -3 : 3)),
+			);
+			setFindView({...current, end});
+			setScrollOffset(Math.max(0, total - end));
+		},
+		[cols, permSel],
+	);
+
 	/** Fusion Enter — set_config_option(model = <chosen pair value>). */
 	const applyFusion = useCallback(async () => {
 		const s = stateRef.current;
@@ -1177,7 +1260,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			})
 			.catch(() => {});
 	}, []);
-	useEffect(() => {
+		useEffect(() => {
 		refreshBranch();
 	}, [refreshBranch]);
 	useEffect(() => {
@@ -1262,6 +1345,15 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			if (t === '/sidebar') {
 				dispatch({type: 'toggleSidebar'});
 				setPrompt({value: '', cursor: 0});
+				return;
+			}
+			if (t === '/find' || t.startsWith('/find ')) {
+				setPrompt({value: '', cursor: 0});
+				setPaletteSel(0);
+				openFind(t.slice('/find'.length).trimStart(), {
+					value: '',
+					cursor: 0,
+				});
 				return;
 			}
 			if (
@@ -1390,7 +1482,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			if (q.length > 0) dispatch({type: 'clearQueue'});
 			sendPrompt(full, [...queuedAtts.current.splice(0), ...imgs]);
 		},
-		[onQuit, openSession, flash, openPicker, doLogin, doLogout, doStatus, copyReply, doUpdate, sendPrompt, updateSetting, openTheme],
+		[onQuit, openSession, flash, openPicker, openFind, doLogin, doLogout, doStatus, copyReply, doUpdate, sendPrompt, updateSetting, openTheme],
 	);
 
 	const cycleMode = useCallback(() => {
@@ -1458,6 +1550,9 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				case 'copy':
 					copyReply();
 					break;
+				case 'find':
+					openFind('', promptRef.current);
+					break;
 				case 'settings':
 					setSettingsSel(0);
 					setSettingsOpen(true);
@@ -1482,7 +1577,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 					break;
 			}
 		},
-		[submit, cycleMode, openPicker, openFusion, openResume, doLogin, doLogout, doStatus, copyReply, openHelp, openTheme, onQuit],
+		[submit, cycleMode, openPicker, openFusion, openResume, doLogin, doLogout, doStatus, copyReply, openFind, openHelp, openTheme, onQuit],
 	);
 
 	// ---- input ----------------------------------------------------------------
@@ -1539,6 +1634,14 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		);
 	}, []);
 
+	useEffect(() => {
+		if (state.permission && findRef.current) {
+			setFindView(null);
+			if (findDraft.current) setPrompt(findDraft.current);
+			findDraft.current = null;
+		}
+	}, [state.permission]);
+
 	// focus view auto-closes when a permission request arrives or its item
 	// disappears (/clear, session load)
 	useEffect(() => {
@@ -1577,6 +1680,17 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 
 	// bracketed paste arrives as one string — real newlines, never a send
 	usePaste(text => {
+		const fv = findRef.current;
+		if (fv) {
+			const pasted = text.replace(/\r?\n/g, ' ');
+			updateFind(
+				fv.query.slice(0, fv.cursor) +
+					pasted +
+					fv.query.slice(fv.cursor),
+				fv.cursor + pasted.length,
+			);
+			return;
+		}
 		if (inputLocked(stateRef.current)) return;
 		insertText(text);
 	});
@@ -1627,6 +1741,8 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 							Math.min(max, f.scroll + (m.dir === 'up' ? -3 : 3)),
 						),
 					});
+				} else if (findRef.current) {
+					scrollFind(m.dir);
 				} else if (m.dir === 'up') {
 					setScrollOffset(o => o + 3);
 				} else {
@@ -1820,6 +1936,77 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				setFusion({...fu, filter: fu.filter.slice(0, -1), sel: 0});
 			} else if (input && !key.ctrl && !key.meta) {
 				setFusion({...fu, filter: fu.filter + input, sel: 0});
+			}
+			return;
+		}
+
+		// find captures all input while open
+		const fv = findRef.current;
+		if (fv) {
+			if (key.escape) {
+				const w = contentWidth(cols, effSettingsRef.current.width);
+				const total = transcriptLayout(
+					s,
+					w,
+					animTickRef.current,
+					permSel,
+				).lines.length;
+				setScrollOffset(Math.max(0, total - fv.end));
+				setFindView(null);
+				if (findDraft.current) setPrompt(findDraft.current);
+				findDraft.current = null;
+			} else if (key.upArrow || key.return || key.downArrow) {
+				const w = contentWidth(cols, effSettingsRef.current.width);
+				const lines = transcriptLayout(
+					s,
+					w,
+					animTickRef.current,
+					permSel,
+				).lines;
+				const matches = findMatches(lines, fv.query);
+				if (matches.length > 0) {
+					const direction = key.downArrow ? 1 : -1;
+					const selected =
+						(fv.selected + direction + matches.length) % matches.length;
+					updateFind(fv.query, fv.cursor, selected);
+				}
+			} else if (key.leftArrow || key.rightArrow) {
+				setFindView({
+					...fv,
+					cursor: Math.max(
+						0,
+						Math.min(
+							fv.query.length,
+							fv.cursor + (key.rightArrow ? 1 : -1),
+						),
+					),
+				});
+			} else if (key.home || (key.ctrl && input === 'a')) {
+				setFindView({...fv, cursor: 0});
+			} else if (key.end || (key.ctrl && input === 'e')) {
+				setFindView({...fv, cursor: fv.query.length});
+			} else if (key.backspace || key.delete) {
+				if (key.backspace && fv.cursor > 0) {
+					updateFind(
+						fv.query.slice(0, fv.cursor - 1) + fv.query.slice(fv.cursor),
+						fv.cursor - 1,
+					);
+				} else if (key.delete && fv.cursor < fv.query.length) {
+					updateFind(
+						fv.query.slice(0, fv.cursor) +
+							fv.query.slice(fv.cursor + 1),
+						fv.cursor,
+					);
+				}
+			} else if (key.ctrl && input === 'u') {
+				updateFind('', 0);
+			} else if (input && !key.ctrl && !key.meta) {
+				updateFind(
+					fv.query.slice(0, fv.cursor) +
+						input +
+						fv.query.slice(fv.cursor),
+					fv.cursor + input.length,
+				);
 			}
 			return;
 		}
@@ -2340,6 +2527,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				cursor: prompt.cursor,
 				tick: animTick,
 				authSel,
+				flash: state.notice,
 				picker: picker ?? undefined,
 				fusion: fusion ?? undefined,
 				resume: resumeView ?? undefined,
@@ -2378,6 +2566,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				modelPicker: picker ?? undefined,
 				fusion: fusion ?? undefined,
 				resume: resumeView ?? undefined,
+				find: findView ?? undefined,
 				permSel,
 				handoff: handoff ?? undefined,
 			},
@@ -2386,6 +2575,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			effSettings.width,
 		);
 		rowItem.current = r.rowItem;
+		findViewportHeight.current = r.transcriptHeight;
 		lines = r.lines;
 	}
 

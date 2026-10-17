@@ -206,6 +206,54 @@ export function inputPanel(
 	return rows;
 }
 
+export function findPanel(
+	w: number,
+	query: string,
+	cursor: number,
+	tick: number,
+	meta: PanelMeta,
+	current: number,
+	total: number,
+): Seg[][] {
+	const base = inputPanel(w, '', 0, tick, meta);
+	const innerW = w - 4;
+	const status = total > 0 ? `${current}/${total}` : 'no matches';
+	const label = [seg('find ', 'bright', 'panel'), seg('❯ ', 'bright', 'panel')];
+	const room = Math.max(0, innerW - segsWidth(label) - strWidth(status) - 1);
+	const before = query.slice(0, cursor);
+	const at = query[cursor] ?? ' ';
+	const after = query.slice(cursor + (cursor < query.length ? 1 : 0));
+	const cursorOn = tick % 12 < 7;
+	const input = truncSegs(
+		[
+			seg(before, 'text', 'panel'),
+			cursorOn ? seg(at, 'caret', 'sel') : seg(at, 'text', 'panel'),
+			seg(after, 'text', 'panel'),
+		],
+		room,
+	);
+	const left = [...label, ...input];
+	const body = [
+		...left,
+		seg(' '.repeat(Math.max(1, innerW - segsWidth(left) - strWidth(status))), 'plain', 'panel'),
+		seg(status, 'faint', 'panel'),
+	];
+	const row = (content: Seg[]): Seg[] => [
+		...base[2]!.slice(0, 2),
+		...padSegs(content, innerW, 'panel'),
+		...base[2]!.slice(-2),
+	];
+	return [
+		base[0]!,
+		base[1]!,
+		row(body),
+		row([seg('↑↓ prev/next · ↵ older · esc close', 'faint', 'panel')]),
+		base[4]!,
+		base[5]!,
+		base[6]!,
+	];
+}
+
 /** Right-aligned key hints (keys bright, labels muted). */
 export function hintsLine(
 	w: number,

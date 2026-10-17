@@ -129,7 +129,7 @@ on the same row and within 2 columns, or `ctrl+f` (most recent tool item,
 else the last item) — the block expands to a full-screen view
 (`src/ui/focus.ts`): `▸ <label> · <i>/<n>` header and
 rule inset 2 cols, all content rows at `cols-4`, a footer with the line
-range and `↑↓ scroll · ←→ prev/next · c copy · esc close` sitting at
+range and `↑↓ scroll · ←→ prev/next · c copy · o open link · esc close` sitting at
 `rows-3` with two blank rows below (the status bar's slot).
 
 - Hit-testing: `transcriptLayout` returns `{lines, spans}` — item rows
@@ -145,9 +145,12 @@ range and `↑↓ scroll · ←→ prev/next · c copy · esc close` sitting at
   inline permission rows are not shown.
 - Keys: esc/q close; ↑/↓ 1 line; pgup/pgdn page; home/end top/bottom;
   ←/→ prev/next item (scroll resets); wheel ±3; `c` copies
-  `itemPlainText` and flashes `copied`; everything else is swallowed
-  (pastes included). The view auto-closes when a permission request
-  arrives or the item disappears.
+  `itemPlainText` and flashes `copied`; `o` opens the next HTTP(S) URL in
+  this item (`open` on macOS, `xdg-open` elsewhere), cycles through the
+  URLs, and flashes `opened <i>/<n> · <url>`; with none it flashes
+  `no links in this block`. Everything else is swallowed (pastes
+  included). The view auto-closes when a permission request arrives or
+  the item disappears.
 - `itemPlainText(item, cwd)`: user/agent/thought → text; execute →
   `$ <cmd>` + output; edit → `--- <path>` then `+ `/`- `/`  `-prefixed
   diff lines; other tools → output or the one-liner.
@@ -300,7 +303,7 @@ A vertically + horizontally centered column:
 
 1. The 2× braille mark (with shimmer).
 2. `Devin` bold bright + ` TUI` muted; below, muted
-   `v0.3.1 · <agentInfo.title once known>`.
+   `v0.3.2 · <agentInfo.title once known>`.
 3. The input panel (composer), width `min(78, cols-8)` — a rounded bezel
    frame `╭─…─╮` / `│ … │` / `╰─…─╯` drawn in `bezel*` tokens on the screen
    `bg`, with `panel` bg inside and 1 col of horizontal padding. Content
@@ -339,7 +342,7 @@ A vertically + horizontally centered column:
    `● Tip  <key> <text>` (● / Tip / key bright, rest muted) cycling ~5 tips
    every ~10s.
 6. Corners: bottom-left `~cwd` muted + ` (<branch>)` faint (omitted
-   outside a git repo), bottom-right `v0.3.1` faint — plus ` · update `
+   outside a git repo), bottom-right `v0.3.2` faint — plus ` · update `
    muted + `v<latest>` bright + ` available — type /update` muted when an
    update check found a newer version — inset 2 cols on
    both sides and placed at `rows-3` (two blank rows below), matching
@@ -562,6 +565,13 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   continuations; 2+ leading spaces nest 2 cols deeper. Blinking `▌` caret
   inline at the end of the last line while the item is last + a turn is
   running; leading and trailing blank markdown lines trimmed.
+- **Links**: HTTP(S) URLs in user, agent/thought, system, plan and tool
+  text render as OSC 8 terminal hyperlinks. Markdown `[label](https://…)`
+  renders `label` in `bright` and links to its target; non-HTTP(S)
+  Markdown targets remain literal. Trailing prose punctuation and
+  unbalanced closing `)`/`]` stay outside the link; wrapped or truncated
+  URL fragments retain the full target. URL matches containing control
+  characters are left unlinked.
 - **Thought**: one line — `∴ Thinking` muted italic + ` · <last line>`
   faint.
 - **Tool call**: a Devin-CLI-style block, all data merged across
@@ -804,6 +814,8 @@ locally, mirroring the open-source `devin-handoff.sh` `create` exactly
   tool one-liners like `Ran command: <cmd>`, `Edited <path>`), last ~8KB.
 - Task = the `/handoff` args, else `Continue where the local session left
   off.`
+- On success the returned URL is copied to the clipboard and shown in the
+  system line as a terminal hyperlink.
 - Confirmation block renders above the composer (same slot as the slash
   dropdown): `Hand off to a cloud Devin?` bright, faint rows `repo
   <slug|none> · branch <b|none> · diff <n> KB · context <n> KB` and

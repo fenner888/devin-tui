@@ -1,6 +1,7 @@
 import {
 	type Seg,
 	seg,
+	linkify,
 	padSegs,
 	blankLine,
 	wrapSegs,
@@ -46,7 +47,9 @@ function contentLines(
 		return item.text
 			.trim()
 			.split('\n')
-			.flatMap(l => wrapSegs([seg(cleanText(l), 'thought')], w));
+			.flatMap(l =>
+				wrapSegs(linkify([seg(cleanText(l), 'thought')]), w),
+			);
 	}
 	if (item.kind === 'tool') return toolBlock(item, s, w, tick, true);
 	return systemLines(item, w);
@@ -75,7 +78,7 @@ export function focusLines(
 			...truncSegs(
 				[
 					seg('▸ ', 'muted'),
-					seg(label(item, s.cwd), 'bright'),
+					...linkify([seg(label(item, s.cwd), 'bright')]),
 					seg(` · ${idx + 1}/${s.items.length}`, 'muted'),
 				],
 				cols - 4,
@@ -103,8 +106,12 @@ export function focusLines(
 				seg('  ', 'faint'),
 				seg(range, 'faint'),
 				seg('   ', 'faint'),
+				...(s.notice ? [seg(s.notice, 'bright'), seg(' · ', 'faint')] : []),
 				...(copied ? [seg('copied', 'ok'), seg(' · ', 'faint')] : []),
-				seg('↑↓ scroll · ←→ prev/next · c copy · esc close', 'faint'),
+				seg(
+					'↑↓ scroll · ←→ prev/next · c copy · o open link · esc close',
+					'faint',
+				),
 			],
 			cols,
 		),

@@ -509,6 +509,16 @@ async function runSlowTurn(): Promise<'end_turn' | 'cancelled'> {
 	return 'end_turn';
 }
 
+async function runLinksTurn(): Promise<'end_turn'> {
+	await update({
+		sessionUpdate: 'agent_message_chunk',
+		content: text(
+			'Useful links: https://example.com/first, and [docs](https://docs.example.com/help).',
+		),
+	});
+	return 'end_turn';
+}
+
 // ---- resumable sessions (session/list + session/load fixtures) -----------
 
 const FAKE_SESSIONS = () => [
@@ -680,7 +690,11 @@ const agent: Agent = {
 		void update({sessionUpdate: 'user_message_chunk', content: {type: 'text', text}});
 		cancelled = false;
 		await sleep(2500); // mimic real Devin's ~4s TTFT before the first chunk
-		const stopReason = promptCount === 1 ? await runMainTurn() : await runSlowTurn();
+		const stopReason = /\blinks?\b/i.test(text)
+			? await runLinksTurn()
+			: promptCount === 1
+				? await runMainTurn()
+				: await runSlowTurn();
 		await emitTurnStats(promptCount - 1);
 		return {stopReason};
 	},

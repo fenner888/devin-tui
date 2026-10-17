@@ -18,6 +18,91 @@ export interface Seg {
 
 export const seg = (t: string, k?: Token, bg?: Bg): Seg => ({t, k, bg});
 
+const URL_PATTERN = /https?:\/\/[^\s<>"'`]+/g;
+const CONTROL_CHAR = /[\x00-\x1f\x7f]/;
+
+function hasExtraClosing(text: string, open: string, close: string): boolean {
+	let depth = 0;
+	for (const ch of text) {
+		if (ch === open) depth++;
+		else if (ch === close) depth--;
+	}
+	return depth < 0;
+}
+
+function trimUrlEnd(raw: string): string {
+	let end = raw.length;
+	while (end > 0) {
+		const last = raw[end - 1];
+		if (/[.,;:!?]/.test(last)) {
+			end--;
+			continue;
+		}
+		const candidate = raw.slice(0, end);
+		if (
+			(last === ')' && hasExtraClosing(candidate, '(', ')')) ||
+			(last === ']' && hasExtraClosing(candidate, '[', ']'))
+		) {
+			end--;
+			continue;
+		}
+		break;
+	}
+	return raw.slice(0, end);
+}
+
+/** HTTP(S) URL occurrences with prose punctuation and unmatched closers removed. */
+export function findHttpUrls(text: string): string[] {
+	const urls: string[] = [];
+	const re = new RegExp(URL_PATTERN.source, 'g');
+	let match: RegExpExecArray | null;
+	while ((match = re.exec(text))) {
+		if (CONTROL_CHAR.test(match[0])) continue;
+		const url = trimUrlEnd(match[0]);
+		if (url) urls.push(url);
+	}
+	return urls;
+}
+
+/** Linkify HTTP(S) URL runs while preserving each segment's styling. */
+export function linkify(segs: Seg[]): Seg[] {
+	const out: Seg[] = [];
+	for (const source of segs) {
+		if (source.link !== undefined) {
+			out.push(source);
+			continue;
+		}
+		const pieces: Seg[] = [];
+		const re = new RegExp(URL_PATTERN.source, 'g');
+		let last = 0;
+		let linked = false;
+		let match: RegExpExecArray | null;
+		while ((match = re.exec(source.t))) {
+			const raw = match[0];
+			if (CONTROL_CHAR.test(raw)) continue;
+			const url = trimUrlEnd(raw);
+			if (!url) continue;
+			if (match.index > last) {
+				pieces.push({...source, t: source.t.slice(last, match.index)});
+			}
+			pieces.push({...source, t: url, link: url});
+			const trailing = raw.slice(url.length);
+			if (trailing) pieces.push({...source, t: trailing});
+			last = match.index + raw.length;
+			linked = true;
+		}
+		if (!linked) {
+			out.push(source);
+			continue;
+		}
+		if (last < source.t.length) {
+			pieces.push({...source, t: source.t.slice(last)});
+		}
+		out.push(...pieces);
+	}
+	return out;
+}
+
 /** Display width of a code point (0 = combining/control, 2 = wide). */
 export function cpWidth(cp: number): number {
 	if (cp === 0) return 0;

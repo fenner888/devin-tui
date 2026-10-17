@@ -3,6 +3,7 @@ import {basename} from 'node:path';
 import {
 	type Seg,
 	seg,
+	linkify,
 	wrapSegs,
 	padSegs,
 	blankLine,
@@ -43,7 +44,7 @@ export function userLines(item: {text: string}, w: number): Seg[][] {
 	const text = item.text.replace(/\n+/g, ' ');
 	const rows: Seg[][] = [blankLine(w, 'panel')];
 	for (const [i, l] of wrapSegs(
-		[seg(text, 'bright', 'panel')],
+		linkify([seg(text, 'bright', 'panel')]),
 		Math.max(1, w - 2),
 	).entries()) {
 		rows.push(
@@ -62,8 +63,9 @@ export function agentLines(item: {text: string}, w: number, cursor: boolean): Se
 	while (md.length > 0 && segsWidth(md[0].segs) === 0) md.shift();
 	const rows: Seg[][] = [];
 	for (const ml of md) {
+		const segs = linkify(ml.segs);
 		if (ml.code) {
-			for (const l of wrapSegs(ml.segs, Math.max(1, w - 2))) {
+			for (const l of wrapSegs(segs, Math.max(1, w - 2))) {
 				rows.push(
 					padSegs(
 						[
@@ -75,12 +77,12 @@ export function agentLines(item: {text: string}, w: number, cursor: boolean): Se
 					),
 				);
 			}
-		} else if (segsWidth(ml.segs) === 0) {
+		} else if (segsWidth(segs) === 0) {
 			rows.push(blankLine(w));
 		} else {
 			const indent = ml.indent ?? 0;
 			for (const [li, l] of wrapSegs(
-				ml.segs,
+				segs,
 				Math.max(1, w - indent),
 			).entries()) {
 				rows.push(
@@ -112,7 +114,10 @@ function thoughtLines(item: {text: string}, w: number): Seg[][] {
 	return [
 		padSegs(
 			truncSegs(
-				[seg('∴ Thinking', 'thought'), seg(` · ${tail}`, 'ghost')],
+				[
+					seg('∴ Thinking', 'thought'),
+					...linkify([seg(` · ${tail}`, 'ghost')]),
+				],
 				w,
 			),
 			w,
@@ -309,19 +314,10 @@ export function cleanText(s: string): string {
 	return out;
 }
 
-/** Cut a string to `w` cols; when it doesn't fit the last col is `…`. */
-function fitStr(s: string, w: number): string {
-	if (strWidth(s) <= w) return s;
-	if (w <= 0) return '';
-	let out = '';
-	let col = 0;
-	for (const ch of s) {
-		const cw = cpWidth(ch.codePointAt(0) ?? 0);
-		if (col + cw > w - 1) break;
-		out += ch;
-		col += cw;
-	}
-	return out + '…';
+function fitSegs(segs: Seg[], w: number, tok: Token): Seg[] {
+	if (segsWidth(segs) <= w) return segs;
+	if (w <= 0) return [];
+	return [...truncSegs(segs, w - 1), seg('…', tok)];
 }
 
 /** Extract displayable text: content[] text blocks, else
@@ -382,7 +378,7 @@ function cmdSegs(cmd: string): Seg[] {
 		out.push(seg(tok, k));
 		i++;
 	}
-	return out;
+	return linkify(out);
 }
 
 /** Devin sends the command as a `tool://preview` resource content item
@@ -452,11 +448,12 @@ function execBody(
 		const max = full ? lines.length : failed ? 3 : 10;
 		for (const l of lines.slice(0, max)) {
 			const tok = failed ? 'err' : 'faint';
+			const linked = linkify([seg(l, tok)]);
 			if (full) {
 				// focus view: wrap long lines instead of …-truncating
-				for (const wl of wrapSegs([seg(l, tok)], room)) rows.push(wl);
+				for (const wl of wrapSegs(linked, room)) rows.push(wl);
 			} else {
-				rows.push([seg(fitStr(l, room), tok)]);
+				rows.push(fitSegs(linked, room, tok));
 			}
 		}
 		if (lines.length > max) {
@@ -481,9 +478,20 @@ function diffRow(
 	room: number,
 ): Seg[] {
 	const avail = Math.max(0, room - 5);
-	const shown = fitStr(cleanText(text), avail);
-	const pad = bg ? ' '.repeat(Math.max(0, avail - strWidth(shown))) : '';
-	return [seg(num.padStart(4), 'faint'), seg(' '), seg(shown + pad, tok, bg)];
+	const shown = fitSegs(
+		linkify([seg(cleanText(text), tok, bg)]),
+		avail,
+		tok,
+	);
+	const pad = bg
+		? ' '.repeat(Math.max(0, avail - segsWidth(shown)))
+		: '';
+	return [
+		seg(num.padStart(4), 'faint'),
+		seg(' '),
+		...shown,
+		...(pad ? [seg(pad, tok, bg)] : []),
+	];
 }
 
 const DIFF_MAX_CHANGED = 12;
@@ -559,9 +567,11 @@ function textBody(item: ToolItem, room: number, full = false): Seg[][] {
 	const tok = failed ? 'err' : 'faint';
 	const lines = out.replace(/\n+$/, '').split('\n');
 	if (full) {
-		return lines.flatMap(l => wrapSegs([seg(l, tok)], room));
+		return lines.flatMap(l => wrapSegs(linkify([seg(l, tok)]), room));
 	}
-	return lines.slice(0, 3).map(l => [seg(fitStr(l, room), tok)]);
+	return lines
+		.slice(0, 3)
+		.map(l => fitSegs(linkify([seg(l, tok)]), room, tok));
 }
 
 /** A completed non-execute tool whose output is a single short line
@@ -632,8 +642,13 @@ export function toolBlock(
 		? seg(tick % 8 < 4 ? '○' : '◌', 'muted')
 		: seg('●', item.status === 'completed' ? 'ok' : 'err');
 	const {label, subject} = toolLabel(item, item.toolCwd ?? s.cwd);
-	const head: Seg[] = [seg(' '), dot, seg(' '), seg(label, 'bright')];
-	if (subject) head.push(seg(` ${subject}`, 'muted'));
+	const head: Seg[] = [
+		seg(' '),
+		dot,
+		seg(' '),
+		...linkify([seg(label, 'bright')]),
+	];
+	if (subject) head.push(...linkify([seg(` ${subject}`, 'muted')]));
 	const stats = kind === 'edit' ? diffStats(item) : undefined;
 	if (stats && (stats.add > 0 || stats.del > 0)) {
 		head.push(
@@ -645,7 +660,7 @@ export function toolBlock(
 	}
 	// completed non-execute tools with a one-line result show it inline
 	const short = shortResult(item);
-	if (short) head.push(seg(` · ${short}`, 'faint'));
+	if (short) head.push(...linkify([seg(` · ${short}`, 'faint')]));
 
 	const room = Math.max(1, w - 4);
 
@@ -710,13 +725,13 @@ export function permissionRows(
 					? [
 							seg(' ❯ ', 'pkBold'),
 							seg(`${i + 1} `, 'pkBold'),
-							seg(o.name, 'pkBold'),
+							...linkify([seg(o.name, 'pkBold')]),
 						]
 					: [
 							seg('   '),
 							seg(`${i + 1}`, 'faint'),
 							seg(' '),
-							seg(o.name, 'text'),
+							...linkify([seg(o.name, 'text')]),
 						],
 				w,
 			),
@@ -733,10 +748,9 @@ export function systemLines(
 	item: {text: string; bright?: string},
 	w: number,
 ): Seg[][] {
-	const segs = [seg('· ', 'faint'), seg(item.text, 'faint')];
+	const segs = linkify([seg('· ', 'faint'), seg(item.text, 'faint')]);
 	if (item.bright) {
-		const link = /^https?:\/\//.test(item.bright) ? item.bright : undefined;
-		segs.push({...seg(item.bright, 'bright'), link});
+		segs.push(...linkify([seg(item.bright, 'bright')]));
 	}
 	return [padSegs(truncSegs(segs, w), w)];
 }
@@ -806,7 +820,9 @@ export function transcriptLayout(
 			out.push(
 				padSegs(
 					truncSegs(
-						[seg(`↳ queued: ${q.replace(/\s+/g, ' ')}`, 'faint')],
+						linkify([
+							seg(`↳ queued: ${q.replace(/\s+/g, ' ')}`, 'faint'),
+						]),
 						w,
 					),
 					w,
@@ -818,7 +834,7 @@ export function transcriptLayout(
 		if (out.length > 0) out.push(blankLine(w));
 		out.push(activityLine(s, w, tick));
 	}
-	return {lines: out, spans};
+	return {lines: out.map(line => linkify(line)), spans};
 }
 
 /** The transcript's padded line list (blank row between items). The
@@ -964,7 +980,10 @@ export function planLines(s: State, w: number, tick: number): Seg[][] {
 					: ['○', 'muted'];
 		rows.push(
 			padSegs(
-				truncSegs([seg(` ${icon} `, tok), seg(e.content, tok)], w),
+				truncSegs(
+					[seg(` ${icon} `, tok), ...linkify([seg(e.content, tok)])],
+					w,
+				),
 				w,
 			),
 		);

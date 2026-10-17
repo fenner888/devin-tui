@@ -152,8 +152,8 @@ export function highlightRow(
 			out.push({
 				...source,
 				t: source.t.slice(from, end),
-				k: current ? 'pk' : 'sel',
-				bg: current ? 'pkSel' : 'sel',
+				k: current ? 'sel' : 'pk',
+				bg: current ? 'sel' : 'pkSel',
 			});
 			local = end;
 		}

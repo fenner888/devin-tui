@@ -7,6 +7,7 @@ scenarios:
   boot   - quit during the boot screen (ctrl+c x2)
   full   - prompt, permission 'y', palette, scroll, cancel, quit
   short  - prompt, permission 'y', quit (for the 80-col layout)
+  recent - show the recent-session Home line and open Resume
 """
 import fcntl
 import os
@@ -698,6 +699,19 @@ SCENARIOS = {
         (0.4, b"\x1b[A"),         # older match
         (1.0, b""),
         (0.4, b"\x1b"),           # close and restore composer
+        (1.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # Show the recent session on Home, open the existing resume picker,
+    # return to Home, then quit.
+    "recent": [
+        (6.0, b"\r"),
+        (3.0, b""),
+        (0.5, b"\x12"),           # ctrl+r
+        (1.5, b""),
+        (0.5, ESC),
         (1.0, b""),
         (0.5, b"\x03"),
         (0.4, b"\x03"),

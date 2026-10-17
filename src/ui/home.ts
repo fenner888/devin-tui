@@ -20,6 +20,7 @@ import {
 	fusionData,
 	fusionLines,
 	pickerLines,
+	relTime,
 	resumeLines,
 	type FusionView,
 	type PickerView,
@@ -47,6 +48,7 @@ export interface HomeUI {
 	picker?: PickerView;
 	fusion?: FusionView;
 	resume?: ResumeView;
+	recent?: {title?: string | null; updatedAt?: string | null};
 	paletteSel: number;
 	slashItems: {name: string; description?: string}[];
 	slashTop: number; // dropdown window top (scrolls to keep sel visible)
@@ -262,20 +264,56 @@ export function homeLines(
 	}
 	if (s.status === 'idle') {
 		const tip = TIPS[Math.floor(ui.tick / 125) % TIPS.length];
+		const recent = ui.recent;
 		zone.length = 0;
-		zone.push(
-			at(
-				x,
-				ui.flash
-					? [seg('● ', 'bright'), seg(ui.flash, 'bright')]
-					: [
-							seg('● Tip  ', 'bright'),
-							seg(tip.key, 'bright'),
-							seg(` ${tip.text}`, 'muted'),
-						],
-			),
-		);
+		if (ui.flash) {
+			zone.push(
+				at(x, [seg('● ', 'bright'), seg(ui.flash, 'bright')]),
+			);
+		} else if (recent) {
+			const when = relTime(recent.updatedAt);
+			const prefix = [seg('Recent  ', 'bright')];
+			const suffix = [
+				...(when ? [seg(` · ${when}`, 'faint')] : []),
+				seg('   '),
+				seg('ctrl+r', 'bright'),
+				seg(' resume', 'muted'),
+			];
+			const titleRoom = Math.max(
+				0,
+				w - segsWidth([...prefix, ...suffix]),
+			);
+			zone.push(
+				at(x, [
+					...prefix,
+					...truncSegs(
+						[seg(recent.title || 'Untitled', 'text')],
+						titleRoom,
+					),
+					...suffix,
+				]),
+			);
+		} else {
+			zone.push(
+				at(x, [
+					seg('● Tip  ', 'bright'),
+					seg(tip.key, 'bright'),
+					seg(` ${tip.text}`, 'muted'),
+				]),
+			);
+		}
 	}
+
+	const homeHints: [string, string][] = [
+		['shift+tab', 'mode'],
+		['ctrl+p', 'commands'],
+		['alt+enter', 'newline'],
+		['@', 'file'],
+		['▣', 'drop image'],
+	];
+	const resumeHints: [string, string][] = [...homeHints, ['ctrl+r', 'resume']];
+	const shownHints =
+		segsWidth(hintsLine(w, resumeHints)) <= w ? resumeHints : homeHints;
 
 	const block: Seg[][] = [
 		...LOGO_2X.map(row =>
@@ -311,13 +349,7 @@ export function homeLines(
 					...input.map(row => at(x, row)),
 					at(
 						x,
-						hintsLine(w, [
-							['shift+tab', 'mode'],
-							['ctrl+p', 'commands'],
-							['alt+enter', 'newline'],
-							['@', 'file'],
-							['▣', 'drop image'],
-						]),
+						hintsLine(w, shownHints),
 					),
 				]),
 		blankLine(cols),

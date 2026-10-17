@@ -343,7 +343,7 @@ A vertically + horizontally centered column:
    `press q to quit`. Once ready, if `session/list` is supported and returns
    sessions for this cwd, replace the tip with
    `Recent  <title or Untitled> · <relative time>   ctrl+r resume` (`Recent`
-   and `ctrl+r` bright, title text, time faint, `resume` muted). Fetch the
+   and `ctrl+r` bright, title uses `text`, time faint, `resume` muted). Fetch the
    list once and silently fall back to the rotating tip on failure or an
    empty result. Truncate the title to fit. Otherwise, show one rotating tip
    line `● Tip  <key> <text>` (● / Tip / key bright, rest muted) cycling

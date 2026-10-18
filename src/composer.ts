@@ -7,6 +7,54 @@ import {promisify} from 'node:util';
 import type {ContentBlock} from '@agentclientprotocol/sdk';
 
 const execFileP = promisify(execFile);
+const WORD_CHAR = /[\p{L}\p{N}_]/u;
+
+function previousCharStart(value: string, end: number): number {
+	const code = value.charCodeAt(end - 1);
+	const previous = value.charCodeAt(end - 2);
+	return code >= 0xdc00 &&
+		code <= 0xdfff &&
+		previous >= 0xd800 &&
+		previous <= 0xdbff
+		? end - 2
+		: end - 1;
+}
+
+function nextCharEnd(value: string, start: number): number {
+	return start + ((value.codePointAt(start) ?? 0) > 0xffff ? 2 : 1);
+}
+
+/** Start of the word before `cursor`, skipping punctuation and whitespace. */
+export function wordLeft(value: string, cursor: number): number {
+	let i = Math.max(0, Math.min(value.length, Math.trunc(cursor)));
+	while (i > 0) {
+		const start = previousCharStart(value, i);
+		if (WORD_CHAR.test(value.slice(start, i))) break;
+		i = start;
+	}
+	while (i > 0) {
+		const start = previousCharStart(value, i);
+		if (!WORD_CHAR.test(value.slice(start, i))) break;
+		i = start;
+	}
+	return i;
+}
+
+/** End of the word at or after `cursor`, skipping punctuation and whitespace. */
+export function wordRight(value: string, cursor: number): number {
+	let i = Math.max(0, Math.min(value.length, Math.trunc(cursor)));
+	while (i < value.length) {
+		const end = nextCharEnd(value, i);
+		if (WORD_CHAR.test(value.slice(i, end))) break;
+		i = end;
+	}
+	while (i < value.length) {
+		const end = nextCharEnd(value, i);
+		if (!WORD_CHAR.test(value.slice(i, end))) break;
+		i = end;
+	}
+	return i;
+}
 
 // ---- visual lines (multiline composer) --------------------------------------
 

@@ -184,7 +184,7 @@ export class AgentConn {
 				fs: {readTextFile: false, writeTextFile: false},
 				terminal: false,
 			},
-			clientInfo: {name: 'devin-tui', title: 'Devin TUI', version: '0.3.5'},
+			clientInfo: {name: 'devin-tui', title: 'Devin TUI', version: '0.3.6'},
 		});
 		return this.init;
 	}

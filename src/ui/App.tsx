@@ -74,6 +74,8 @@ import {
 	moveVertical,
 	resolveMentions,
 	tokenEndingAt,
+	wordLeft,
+	wordRight,
 	type ImageAttachment,
 } from '../composer.js';
 import {
@@ -1395,7 +1397,9 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 						findRef.current?.end ??
 							Math.max(0, lines.length - scrollOffset),
 					);
-			setFindView({query, cursor, selected: index, end});
+			const next = {query, cursor, selected: index, end};
+			findRef.current = next;
+			setFindView(next);
 			setScrollOffset(Math.max(0, lines.length - end));
 		},
 		[cols, permSel, scrollOffset],
@@ -2226,6 +2230,66 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				});
 			} else if (key.return) {
 				void sendCloudReply();
+			} else if ((key.meta && key.backspace) || (key.ctrl && input === 'w')) {
+				setCloudView(current => {
+					if (!current) return current;
+					const start = wordLeft(current.value, current.cursor);
+					return {
+						...current,
+						value:
+							current.value.slice(0, start) +
+							current.value.slice(current.cursor),
+						cursor: start,
+					};
+				});
+			} else if (key.meta && input === 'd') {
+				setCloudView(current => {
+					if (!current) return current;
+					const end = wordRight(current.value, current.cursor);
+					return {
+						...current,
+						value:
+							current.value.slice(0, current.cursor) +
+							current.value.slice(end),
+					};
+				});
+			} else if (key.meta && (key.leftArrow || input === 'b')) {
+				setCloudView(current =>
+					current
+						? {
+								...current,
+								cursor: wordLeft(current.value, current.cursor),
+							}
+						: current,
+				);
+			} else if (key.meta && (key.rightArrow || input === 'f')) {
+				setCloudView(current =>
+					current
+						? {
+								...current,
+								cursor: wordRight(current.value, current.cursor),
+							}
+						: current,
+				);
+			} else if (key.ctrl && input === 'k') {
+				setCloudView(current =>
+					current
+						? {
+								...current,
+								value: current.value.slice(0, current.cursor),
+							}
+						: current,
+				);
+			} else if (key.ctrl && input === 'u') {
+				setCloudView(current =>
+					current
+						? {
+								...current,
+								value: current.value.slice(current.cursor),
+								cursor: 0,
+							}
+						: current,
+				);
 			} else if (key.leftArrow || key.rightArrow) {
 				setCloudView({
 					...cv,
@@ -2387,8 +2451,38 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 						(fv.selected + direction + matches.length) % matches.length;
 					updateFind(fv.query, fv.cursor, selected);
 				}
+			} else if ((key.meta && key.backspace) || (key.ctrl && input === 'w')) {
+				const start = wordLeft(fv.query, fv.cursor);
+				updateFind(
+					fv.query.slice(0, start) + fv.query.slice(fv.cursor),
+					start,
+				);
+			} else if (key.meta && input === 'd') {
+				const end = wordRight(fv.query, fv.cursor);
+				updateFind(
+					fv.query.slice(0, fv.cursor) + fv.query.slice(end),
+					fv.cursor,
+				);
+			} else if (key.meta && (key.leftArrow || input === 'b')) {
+				const next = {
+					...fv,
+					cursor: wordLeft(fv.query, fv.cursor),
+				};
+				findRef.current = next;
+				setFindView(next);
+			} else if (key.meta && (key.rightArrow || input === 'f')) {
+				const next = {
+					...fv,
+					cursor: wordRight(fv.query, fv.cursor),
+				};
+				findRef.current = next;
+				setFindView(next);
+			} else if (key.ctrl && input === 'k') {
+				updateFind(fv.query.slice(0, fv.cursor), fv.cursor);
+			} else if (key.ctrl && input === 'u') {
+				updateFind(fv.query.slice(fv.cursor), 0);
 			} else if (key.leftArrow || key.rightArrow) {
-				setFindView({
+				const next = {
 					...fv,
 					cursor: Math.max(
 						0,
@@ -2397,11 +2491,17 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 							fv.cursor + (key.rightArrow ? 1 : -1),
 						),
 					),
-				});
+				};
+				findRef.current = next;
+				setFindView(next);
 			} else if (key.home || (key.ctrl && input === 'a')) {
-				setFindView({...fv, cursor: 0});
+				const next = {...fv, cursor: 0};
+				findRef.current = next;
+				setFindView(next);
 			} else if (key.end || (key.ctrl && input === 'e')) {
-				setFindView({...fv, cursor: fv.query.length});
+				const next = {...fv, cursor: fv.query.length};
+				findRef.current = next;
+				setFindView(next);
 			} else if (key.backspace || key.delete) {
 				if (key.backspace && fv.cursor > 0) {
 					updateFind(
@@ -2415,8 +2515,6 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 						fv.cursor,
 					);
 				}
-			} else if (key.ctrl && input === 'u') {
-				updateFind('', 0);
 			} else if (input && !key.ctrl && !key.meta) {
 				updateFind(
 					fv.query.slice(0, fv.cursor) +
@@ -2881,7 +2979,41 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		}
 
 		// prompt editing — update value+cursor atomically
-		if (key.leftArrow) {
+		if ((key.meta && key.backspace) || (key.ctrl && input === 'w')) {
+			if (
+				key.meta &&
+				key.backspace &&
+				prompt.cursor === 0 &&
+				attsRef.current.length > 0
+			) {
+				setAtts(prev => prev.slice(0, -1));
+			} else {
+				setPrompt(p => {
+					const start = wordLeft(p.value, p.cursor);
+					return {
+						value: p.value.slice(0, start) + p.value.slice(p.cursor),
+						cursor: start,
+					};
+				});
+				setPaletteSel(0);
+			}
+		} else if (key.meta && input === 'd') {
+			setPrompt(p => {
+				const end = wordRight(p.value, p.cursor);
+				return {
+					value: p.value.slice(0, p.cursor) + p.value.slice(end),
+					cursor: p.cursor,
+				};
+			});
+			setPaletteSel(0);
+		} else if (key.meta && (key.leftArrow || input === 'b')) {
+			setPrompt(p => ({...p, cursor: wordLeft(p.value, p.cursor)}));
+		} else if (key.meta && (key.rightArrow || input === 'f')) {
+			setPrompt(p => ({...p, cursor: wordRight(p.value, p.cursor)}));
+		} else if (key.ctrl && input === 'k') {
+			setPrompt(p => ({value: p.value.slice(0, p.cursor), cursor: p.cursor}));
+			setPaletteSel(0);
+		} else if (key.leftArrow) {
 			setPrompt(p => ({...p, cursor: Math.max(0, p.cursor - 1)}));
 		} else if (key.rightArrow) {
 			setPrompt(p => ({...p, cursor: Math.min(p.value.length, p.cursor + 1)}));
@@ -2891,6 +3023,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			setPrompt(p => ({...p, cursor: p.value.length}));
 		} else if (key.ctrl && input === 'u') {
 			setPrompt(p => ({value: p.value.slice(p.cursor), cursor: 0}));
+			setPaletteSel(0);
 		} else if (key.backspace || key.delete) {
 			if (prompt.cursor === 0 && attsRef.current.length > 0) {
 				// backspace on an empty input pops the last attachment chip

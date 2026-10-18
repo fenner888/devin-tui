@@ -305,7 +305,7 @@ A vertically + horizontally centered column:
 
 1. The 2× braille mark (with shimmer).
 2. `Devin` bold bright + ` TUI` muted; below, muted
-   `v0.3.5 · <agentInfo.title once known>`.
+   `v0.3.6 · <agentInfo.title once known>`.
 3. The input panel (composer), width `min(78, cols-8)` — a rounded bezel
    frame `╭─…─╮` / `│ … │` / `╰─…─╯` drawn in `bezel*` tokens on the screen
    `bg`, with `panel` bg inside and 1 col of horizontal padding. Content
@@ -352,7 +352,7 @@ A vertically + horizontally centered column:
    ~5 tips every ~10s. An active flash while idle temporarily replaces this
    status row with `● <flash>`; when it expires, the tip/Recent line returns.
 6. Corners: bottom-left `~cwd` muted + ` (<branch>)` faint (omitted
-   outside a git repo), bottom-right `v0.3.5` faint — plus ` · update `
+   outside a git repo), bottom-right `v0.3.6` faint — plus ` · update `
    muted + `v<latest>` bright + ` available — type /update` muted when an
    update check found a newer version — inset 2 cols on
    both sides and placed at `rows-3` (two blank rows below), matching
@@ -490,7 +490,16 @@ centered overlay):
   visual rows (hard newlines + soft wraps) keeping the column — history
   navigation only engages when the cursor is on the first (↑) or last
   (↓) visual row. All editing helpers live in `src/composer.ts`
-  (`visualLines`, `cursorLine`, `moveVertical`).
+  (`visualLines`, `cursorLine`, `moveVertical`, `wordLeft`, `wordRight`).
+- **Word/line editing**: In the prompt composer, Cloud reply and `/find`
+  query, `Option+Backspace` or `Ctrl+W` deletes the previous word;
+  `Option+D` deletes to the next word; `Option+←`/`Option+→` (or
+  `Option+B`/`Option+F`) move by words; `Ctrl+K` deletes to the end and
+  `Ctrl+U` deletes to the start. Word characters are Unicode letters,
+  numbers and `_`; spaces, punctuation and newlines are skipped. Holding
+  `Option+Backspace` repeats word deletions. On macOS, Terminal.app may
+  need “Use Option as Meta key” or iTerm2 may need “Option key: Esc+” so
+  Option sends ESC.
 - **@file mentions**: typing `@` at a word start opens a dropdown in the
   slash-dropdown slot/style (same `slashMenuBlock`, `@` prefix) listing
   project files — `git ls-files -co --exclude-standard` inside a git
@@ -989,6 +998,8 @@ foreground forced to `faint` (dimmed backdrop); the overlay paints on
   input — prompt history only from the first/last row. Tab/Enter accept
   an `@file` dropdown row; Backspace on an empty input pops the last
   attachment chip.
+- Word/line editing keys work in the composer, Cloud reply and `/find`;
+  see Composer / input.
 - Shift+Tab: cycle modes via `session/set_mode` when `modes` advertised.
 - Ctrl+R: open the existing `/resume` picker from Home or an idle session.
 - Ctrl+P: command panel. Ctrl+B: plan block toggle. Ctrl+O: expand/collapse

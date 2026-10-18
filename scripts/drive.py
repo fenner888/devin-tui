@@ -751,6 +751,29 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # Option+Backspace deletes words (including key-repeat in one write);
+    # Option+Left moves to a word start, then Ctrl+W/Ctrl+U edit the line.
+    "words": [
+        (6.0, b"\r"),
+        (3.0, b""),
+        (0.5, b"hello brave new world"),
+        (0.8, b""),
+        (0.4, b"\x1b\x7f"),             # frame marker: hello brave new
+        (0.8, b""),
+        (0.4, b"\x1b\x7f\x1b\x7f"),     # two repeats in one write
+        (0.8, b""),
+        (0.4, b"\x1b[1;3D"),             # meta+leftArrow to word start
+        (0.4, b"X"),                     # frame marker: Xhello
+        (0.8, b""),
+        (0.4, b"\x17"),                  # Ctrl+W removes X
+        (0.8, b""),
+        (0.4, b"\x05"),                  # Ctrl+E moves to line end
+        (0.4, b"\x15"),                  # Ctrl+U clears to line start
+        (0.8, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # Find on Home has no transcript and should show the flash in the tip slot.
     "findhome": [
         (6.0, b"\r"),

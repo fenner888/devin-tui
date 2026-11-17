@@ -12,8 +12,8 @@ This project follows the [Secure Build Baseline](https://github.com/fenner888/to
 | Field | Value |
 |---|---|
 | Tier | Tier 1 — no user accounts or payments |
-| Last pre-launch check | 2026-11-17 |
-| Signed off by | Mark Fenner |
+| Baseline files added | 2026-11-17 |
+| Signed off by | Pending (Mark Fenner) |
 
 ## Platforms
 

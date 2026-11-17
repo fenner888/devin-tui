@@ -1930,6 +1930,14 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	}, []);
 
 	useEffect(() => {
+		if (!state.permission && permResolve.current) {
+			const resolve = permResolve.current;
+			permResolve.current = null;
+			resolve({outcome: 'cancelled'});
+		}
+	}, [state.permission]);
+
+	useEffect(() => {
 		if (state.permission && findRef.current) {
 			setFindView(null);
 			if (findDraft.current) setPrompt(findDraft.current);

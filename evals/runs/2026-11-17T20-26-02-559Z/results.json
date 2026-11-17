@@ -1,0 +1,121 @@
+{
+  "timestamp": "2026-11-17T20-26-02-559Z",
+  "commit": "ee5f7af9ec0010b5d41df878e2ab2007e83981f6",
+  "environment": {
+    "node": "v24.21.0",
+    "os": "linux 6.8.0-1060-aws"
+  },
+  "command": "npm run eval",
+  "results": [
+    {
+      "id": "permission-turn-end-lifecycle",
+      "pass": true,
+      "evidence": "[{\"capabilities\":{\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false,\"auth\":{\"terminal\":false}}},{\"lifecyclePrompt\":1},{\"lifecycleTurnEnded\":true},{\"lifecyclePermission\":1,\"outcome\":{\"outcome\":\"cancelled\"}},{\"lifecyclePrompt\":2},{\"lifecycleWaiting\":true},{\"lifecyclePermission\":2,\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"deny\"}}]"
+    },
+    {
+      "id": "harness-reachable",
+      "pass": true,
+      "evidence": "{\"capabilities\":{\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false,\"auth\":{\"terminal\":false}}}\n{\"prompt\":true}\n{\"permission\":\"second\",\"outcome\":{\"outcome\":\"cancelled\"}}\n{\"waiting\":true}\n{\"permission\":\"first\",\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"deny\"}}\n"
+    },
+    {
+      "id": "terminal-title-injection",
+      "pass": true,
+      "evidence": "no attacker clipboard sequence in PTY"
+    },
+    {
+      "id": "terminal-text-osc52",
+      "pass": true,
+      "evidence": "\"before ]52;c;RVZBTA== after\""
+    },
+    {
+      "id": "terminal-text-csi",
+      "pass": true,
+      "evidence": "\"before [2Jafter\""
+    },
+    {
+      "id": "terminal-text-c1",
+      "pass": true,
+      "evidence": "\"before 2Jafter\""
+    },
+    {
+      "id": "terminal-text-bell",
+      "pass": true,
+      "evidence": "\"before after\""
+    },
+    {
+      "id": "terminal-link-injection",
+      "pass": true,
+      "evidence": "\"link\""
+    },
+    {
+      "id": "permission-kind-fidelity",
+      "pass": true,
+      "evidence": "\" ❯ 1 [reject_once] Allow spoof [2Jxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx↑↓ select · ↵ confirm · esc cancel                                              \""
+    },
+    {
+      "id": "permission-no-auto-approval",
+      "pass": true,
+      "evidence": "[{\"permission\":\"second\",\"outcome\":{\"outcome\":\"cancelled\"}},{\"permission\":\"first\",\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"deny\"}}]"
+    },
+    {
+      "id": "permission-overlap-settled",
+      "pass": true,
+      "evidence": "[{\"permission\":\"second\",\"outcome\":{\"outcome\":\"cancelled\"}},{\"permission\":\"first\",\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"deny\"}}]"
+    },
+    {
+      "id": "bypass-visible",
+      "pass": true,
+      "evidence": "agent-driven mode change visibly labeled in actual PTY (not a local authorization grant)"
+    },
+    {
+      "id": "hidden-context",
+      "pass": true,
+      "evidence": "extension, metadata and stderr canaries absent from PTY"
+    },
+    {
+      "id": "debug-off",
+      "pass": true,
+      "evidence": "[\"devin-acp.log\"]"
+    },
+    {
+      "id": "log-private",
+      "pass": true,
+      "evidence": "600"
+    },
+    {
+      "id": "least-agency",
+      "pass": true,
+      "evidence": "{\"capabilities\":{\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false,\"auth\":{\"terminal\":false}}}"
+    },
+    {
+      "id": "mention-traversal",
+      "pass": true,
+      "evidence": "assertions satisfied"
+    },
+    {
+      "id": "mention-symlink",
+      "pass": true,
+      "evidence": "assertions satisfied"
+    },
+    {
+      "id": "handoff-explicit-content",
+      "pass": true,
+      "evidence": "handoff deliberately includes supplied context and diff; user confirmation remains required"
+    },
+    {
+      "id": "quality-markdown-wrap",
+      "pass": true,
+      "evidence": "11 rows bounded to 40 cells"
+    },
+    {
+      "id": "quality-empty",
+      "pass": true,
+      "evidence": "assertions satisfied"
+    },
+    {
+      "id": "quality-truncation",
+      "pass": true,
+      "evidence": "hard truncation without marker: xxxxxxxxxxxxxxxxxxxx"
+    }
+  ]
+}

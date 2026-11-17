@@ -5,6 +5,12 @@ Reference: toolbox `security-baseline/7-ai.md` (2026 labels). All repros use
 
 ## Current status: E01–E06 Fixed
 
+E04 lifecycle regression: when turn completion or session reset removes the
+permission from reducer state, App now cancels and clears its pending resolver.
+`permission-turn-end-lifecycle` lets a request remain pending through end_turn,
+then verifies the following turn renders a fresh permission, waits for input,
+and resolves only after Escape selects rejection.
+
 All six findings are fixed by commit `4d03f48` on the stacked fixes branch.
 The table records baseline status; post-fix run
 `2026-11-17T20-21-16-619Z` passes 21/21 cases against that source tree.

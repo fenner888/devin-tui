@@ -66,7 +66,8 @@ const MAX_LOG_BYTES = 5 * 1024 * 1024;
 
 export function defaultLogFile(): string {
 	const dir = path.join(os.tmpdir(), 'devin-tui');
-	fs.mkdirSync(dir, {recursive: true});
+	fs.mkdirSync(dir, {recursive: true, mode: 0o700});
+	fs.chmodSync(dir, 0o700);
 	const file = path.join(dir, 'devin-acp.log');
 	try {
 		if (fs.statSync(file).size > MAX_LOG_BYTES) {
@@ -103,7 +104,9 @@ export class AgentConn {
 		if (!rawBin) throw new Error('empty agent command');
 		const bin = resolveBin(rawBin);
 		if (this.opts.model) args.push('--model', this.opts.model);
-		this.logStream = fs.createWriteStream(this.logFile, {flags: 'a'});
+		const fd = fs.openSync(this.logFile, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_APPEND | fs.constants.O_NOFOLLOW, 0o600);
+		fs.fchmodSync(fd, 0o600);
+		this.logStream = fs.createWriteStream(this.logFile, {fd});
 		this.log(`--- spawn: ${bin} ${args.join(' ')} (cwd=${this.opts.cwd})`);
 		this.child = spawn(bin, args, {
 			cwd: this.opts.cwd,
@@ -293,7 +296,9 @@ export class AgentConn {
 					null,
 					2,
 				),
+				{mode: 0o600},
 			);
+			fs.chmodSync(file, 0o600);
 		} catch {
 			// diagnostics must never throw
 		}
@@ -307,7 +312,9 @@ export class AgentConn {
 			fs.appendFileSync(
 				path.join(path.dirname(this.logFile), name),
 				`${JSON.stringify(payload)}\n`,
+				{mode: 0o600},
 			);
+			fs.chmodSync(path.join(path.dirname(this.logFile), name), 0o600);
 		} catch {
 			// diagnostics must never throw
 		}
@@ -322,7 +329,8 @@ export class AgentConn {
 				path.dirname(this.logFile),
 				'config-updates.jsonl',
 			);
-			fs.appendFileSync(file, `${JSON.stringify(update)}\n`);
+			fs.appendFileSync(file, `${JSON.stringify(update)}\n`, {mode: 0o600});
+			fs.chmodSync(file, 0o600);
 		} catch {
 			// diagnostics must never throw
 		}

@@ -9,6 +9,8 @@ data = bytearray()
 start = time.monotonic()
 ready = None
 sent = set()
+lifecycle = os.environ.get('EVAL_SCENARIO') == 'lifecycle'
+next_permission = None
 try:
     while True:
         now = time.monotonic()
@@ -20,9 +22,17 @@ try:
                 raise TimeoutError('Mock TUI readiness timeout: Normal mode not rendered within 30 seconds')
         if ready is not None:
             elapsed = now - ready
-            if elapsed >= 6:
+            if elapsed >= (14 if lifecycle else 6):
                 break
-            for at, key in [(0, b'synthetic test'), (.3, b'\r'), (3, b'\x1b')]:
+            keys = [(0, b'synthetic test'), (.3, b'\r')]
+            keys += [(10, b'next turn'), (10.3, b'\r')] if lifecycle else [(3, b'\x1b')]
+            if lifecycle and b'LIFECYCLE_NEXT_PERMISSION' in data:
+                if next_permission is None:
+                    next_permission = now
+                elif now - next_permission >= 1 and 'cancel-next' not in sent:
+                    os.write(fd, b'\x1b')
+                    sent.add('cancel-next')
+            for at, key in keys:
                 if elapsed >= at and at not in sent:
                     os.write(fd, key)
                     sent.add(at)

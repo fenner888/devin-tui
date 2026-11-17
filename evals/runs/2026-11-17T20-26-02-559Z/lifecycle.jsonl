@@ -1,0 +1,7 @@
+{"capabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false,"auth":{"terminal":false}}}
+{"lifecyclePrompt":1}
+{"lifecycleTurnEnded":true}
+{"lifecyclePermission":1,"outcome":{"outcome":"cancelled"}}
+{"lifecyclePrompt":2}
+{"lifecycleWaiting":true}
+{"lifecyclePermission":2,"outcome":{"outcome":"selected","optionId":"deny"}}

@@ -5,6 +5,7 @@ import {AgentSideConnection, ndJsonStream, type Agent} from '@agentclientprotoco
 const record = (event: unknown) => fs.appendFileSync(process.env.EVAL_EVENTS!, JSON.stringify(event) + '\n');
 const sessionId = 'synthetic-eval';
 let conn: AgentSideConnection;
+let promptCount = 0;
 const agent: Agent = {
  async initialize(p) {
   record({capabilities: p.clientCapabilities});
@@ -14,6 +15,20 @@ const agent: Agent = {
  async newSession() {return {sessionId, modes: {currentModeId: 'normal', availableModes: [{id: 'normal', name: 'Normal'}, {id: 'bypass', name: 'Bypass Permissions'}]}};},
  async cancel() {},
  async prompt() {
+  if (process.env.EVAL_SCENARIO === 'lifecycle') {
+   const turn = ++promptCount;
+   record({lifecyclePrompt: turn});
+   const reply = conn.requestPermission({sessionId, toolCall: {toolCallId: `lifecycle-${turn}`, title: 'synthetic lifecycle', kind: 'execute', status: 'pending'}, options: [{optionId: 'deny', kind: 'reject_once', name: turn === 1 ? 'LIFECYCLE_PENDING' : 'LIFECYCLE_NEXT_PERMISSION'}]}).then(r => record({lifecyclePermission: turn, outcome: r.outcome}));
+   if (turn === 1) {
+    await new Promise(r => setTimeout(r, 8500));
+    record({lifecycleTurnEnded: true});
+   } else {
+    await new Promise(r => setTimeout(r, 500));
+    record({lifecycleWaiting: true});
+    await reply;
+   }
+   return {stopReason: 'end_turn'};
+  }
   record({prompt: true});
   await conn.sessionUpdate({sessionId, update: {sessionUpdate: 'session_info_update', title: 'synthetic\x07\x1b]52;c;RVZBTA==\x07'}});
   await conn.extNotification('_cognition.ai/output', {message: 'HIDDEN_EXTENSION_CANARY'});

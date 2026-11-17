@@ -21,12 +21,25 @@ const env = {PATH: process.env.PATH, HOME: sandbox, TERM: 'xterm-256color', COLO
 execFileSync('python3', ['evals/capture.py', path.join(dir, 'terminal.raw')], {env, timeout: 40000});
 const raw = fs.readFileSync(path.join(dir, 'terminal.raw'), 'utf8');
 const events = fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8');
+execFileSync('python3', ['evals/capture.py', path.join(dir, 'lifecycle.raw')], {env: {...env, EVAL_SCENARIO: 'lifecycle', EVAL_EVENTS: path.join(dir, 'lifecycle.jsonl')}, timeout: 50000});
+const lifecycleRaw = fs.readFileSync(path.join(dir, 'lifecycle.raw'), 'utf8');
+const lifecycle = fs.readFileSync(path.join(dir, 'lifecycle.jsonl'), 'utf8').split('\n').filter(Boolean).map(s => JSON.parse(s));
 const results: {id: string; pass: boolean; evidence: string}[] = [];
 function check(id: string, f: () => unknown) {
  try {const evidence = f(); results.push({id, pass: true, evidence: String(evidence ?? 'assertions satisfied')});}
  catch (e) {results.push({id, pass: false, evidence: e instanceof Error ? e.message : String(e)});}
 }
 const draw = (text: string, link?: string) => renderToString(React.createElement(Line, {segs: [{t: text, link}]}));
+check('permission-turn-end-lifecycle', () => {
+ assert.ok(lifecycle.some(e => e.lifecycleTurnEnded), 'first turn did not end');
+ assert.ok(lifecycle.some(e => e.lifecyclePermission === 1 && e.outcome.outcome === 'cancelled'), 'pending first request not cancelled on turn end');
+ assert.match(lifecycleRaw, /LIFECYCLE_NEXT_PERMISSION/, 'next turn permission was not rendered');
+ const waiting = lifecycle.findIndex(e => e.lifecycleWaiting);
+ const answered = lifecycle.findIndex(e => e.lifecyclePermission === 2);
+ assert.ok(waiting >= 0 && answered > waiting, 'next permission answered before waiting for keypress');
+ assert.equal(lifecycle[answered].outcome.optionId, 'deny');
+ return JSON.stringify(lifecycle);
+});
 check('harness-reachable', () => {assert.match(events, /"prompt":true/); assert.match(events, /"waiting":true/); return events;});
 check('terminal-title-injection', () => {assert.ok(!raw.includes('\x1b]52;c;RVZBTA==\x07'), 'agent OSC 52 reached actual PTY'); return 'no attacker clipboard sequence in PTY';});
 for (const [id, payload] of Object.entries({osc52: '\x1b]52;c;RVZBTA==\x07', csi: '\x1b[2J', c1: '\x9b2J', bell: '\x07'})) {
@@ -35,7 +48,7 @@ for (const [id, payload] of Object.entries({osc52: '\x1b]52;c;RVZBTA==\x07', csi
 check('terminal-link-injection', () => {const out = draw('link', 'https://example.invalid/\x07\x1b]52;c;RVZBTA==\x07'); assert.ok(!out.includes('\x1b]52;'), JSON.stringify(out)); return JSON.stringify(out);});
 const permission = {toolCallId: 'eval', title: 'synthetic', toolKind: 'execute', options: [{optionId: 'deny', kind: 'reject_once' as const, name: 'Allow\nspoof\x1b[2J' + 'x'.repeat(300)}]};
 check('permission-kind-fidelity', () => {const text = permissionRows(permission, 0, 80).flat().map(s => s.t).join(''); assert.match(text, /reject.once/i); return JSON.stringify(text);});
-check('permission-no-auto-approval', () => {const beforeKey = events.split('"waiting":true')[0]; assert.ok(!beforeKey.includes('"permission":'), events); const responses = events.split('\n').filter(Boolean).map(s => JSON.parse(s)).filter(e => e.permission); assert.ok(responses.every(e => e.outcome.outcome === 'cancelled' || e.outcome.optionId === 'deny'), events); return JSON.stringify(responses);});
+check('permission-no-auto-approval', () => {const beforeKey = events.split('{"waiting":true}')[0].split('\n').filter(Boolean).map(s => JSON.parse(s)).filter(e => e.permission); assert.ok(beforeKey.every(e => e.outcome.outcome === 'cancelled'), events); const responses = events.split('\n').filter(Boolean).map(s => JSON.parse(s)).filter(e => e.permission); assert.ok(responses.every(e => e.outcome.outcome === 'cancelled' || e.outcome.optionId === 'deny'), events); return JSON.stringify(responses);});
 check('permission-overlap-settled', () => {const replies = events.split('\n').filter(Boolean).map(s => JSON.parse(s)).filter(e => e.permission); assert.equal(replies.length, 2, 'both overlapping requests must cancel without a selection'); return JSON.stringify(replies);});
 check('bypass-visible', () => {assert.match(raw, /bypass permissions on/); return 'agent-driven mode change visibly labeled in actual PTY (not a local authorization grant)';});
 check('hidden-context', () => {for (const s of ['HIDDEN_EXTENSION_CANARY', 'HIDDEN_META_CANARY', 'STDERR_CANARY']) assert.ok(!raw.includes(s), `${s} reached terminal`); return 'extension, metadata and stderr canaries absent from PTY';});

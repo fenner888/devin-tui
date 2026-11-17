@@ -1,0 +1,4 @@
+{"capabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false,"auth":{"terminal":false}}}
+{"prompt":true}
+{"waiting":true}
+{"permission":"second","outcome":{"outcome":"selected","optionId":"deny"}}

@@ -1,0 +1,116 @@
+{
+  "timestamp": "2026-11-17T20-20-01-130Z",
+  "commit": "168d9e5653eb1f4654ba1446f08b5013b4febf9d",
+  "environment": {
+    "node": "v24.21.0",
+    "os": "linux 6.8.0-1060-aws"
+  },
+  "command": "npm run eval",
+  "results": [
+    {
+      "id": "harness-reachable",
+      "pass": true,
+      "evidence": "{\"capabilities\":{\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false,\"auth\":{\"terminal\":false}}}\n{\"prompt\":true}\n{\"waiting\":true}\n{\"permission\":\"second\",\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"deny\"}}\n"
+    },
+    {
+      "id": "terminal-title-injection",
+      "pass": false,
+      "evidence": "agent OSC 52 reached actual PTY"
+    },
+    {
+      "id": "terminal-text-osc52",
+      "pass": true,
+      "evidence": "\"beforeafter\""
+    },
+    {
+      "id": "terminal-text-csi",
+      "pass": true,
+      "evidence": "\"beforeafter\""
+    },
+    {
+      "id": "terminal-text-c1",
+      "pass": true,
+      "evidence": "\"beforeafter\""
+    },
+    {
+      "id": "terminal-text-bell",
+      "pass": false,
+      "evidence": "renderer retained \"\\u0007\": \"before\\u0007after\""
+    },
+    {
+      "id": "terminal-link-injection",
+      "pass": true,
+      "evidence": "\"\\u001b]8;;https://example.invalid/\\u0007\\u0007link\\u001b]8;;\\u0007\""
+    },
+    {
+      "id": "permission-kind-fidelity",
+      "pass": false,
+      "evidence": "The input did not match the regular expression /reject.once/i. Input:\n\n' ❯ 1 Allow\\n' +\n  'spoof\\x1B[2Jxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx↑↓ select · ↵ confirm · esc cancel                                              '\n"
+    },
+    {
+      "id": "permission-no-auto-approval",
+      "pass": true,
+      "evidence": "[{\"permission\":\"second\",\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"deny\"}}]"
+    },
+    {
+      "id": "permission-overlap-settled",
+      "pass": false,
+      "evidence": "both overlapping requests must cancel without a selection\n\n1 !== 2\n"
+    },
+    {
+      "id": "bypass-visible",
+      "pass": true,
+      "evidence": "agent-driven mode change visibly labeled in actual PTY (not a local authorization grant)"
+    },
+    {
+      "id": "hidden-context",
+      "pass": true,
+      "evidence": "extension, metadata and stderr canaries absent from PTY"
+    },
+    {
+      "id": "debug-off",
+      "pass": true,
+      "evidence": "[\"devin-acp.log\"]"
+    },
+    {
+      "id": "log-private",
+      "pass": false,
+      "evidence": "log mode is 644\n\n36 !== 0\n"
+    },
+    {
+      "id": "least-agency",
+      "pass": true,
+      "evidence": "{\"capabilities\":{\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false,\"auth\":{\"terminal\":false}}}"
+    },
+    {
+      "id": "mention-traversal",
+      "pass": true,
+      "evidence": "assertions satisfied"
+    },
+    {
+      "id": "mention-symlink",
+      "pass": false,
+      "evidence": "Expected values to be strictly deep-equal:\n+ actual - expected\n\n+ [\n+   {\n+     abs: '/home/ubuntu/repos/devin-tui/evals/runs/2026-11-17T20-20-01-130Z/sandbox/project/link.txt',\n+     name: 'link.txt',\n+     rel: 'link.txt'\n+   }\n+ ]\n- []\n"
+    },
+    {
+      "id": "handoff-explicit-content",
+      "pass": true,
+      "evidence": "handoff deliberately includes supplied context and diff; user confirmation remains required"
+    },
+    {
+      "id": "quality-markdown-wrap",
+      "pass": true,
+      "evidence": "11 rows bounded to 40 cells"
+    },
+    {
+      "id": "quality-empty",
+      "pass": true,
+      "evidence": "assertions satisfied"
+    },
+    {
+      "id": "quality-truncation",
+      "pass": true,
+      "evidence": "hard truncation without marker: xxxxxxxxxxxxxxxxxxxx"
+    }
+  ]
+}

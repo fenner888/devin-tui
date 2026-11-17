@@ -8,6 +8,7 @@
     "devin-tui": "./bin/devin-tui.sh"
   },
   "scripts": {
+    "eval": "tsx evals/run.ts",
     "start": "tsx src/index.tsx",
     "typecheck": "tsc --noEmit",
     "fake-agent": "tsx test/fake-agent.ts",

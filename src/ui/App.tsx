@@ -12,6 +12,7 @@ import {
 	type RequestPermissionOutcome,
 } from '@agentclientprotocol/sdk';
 import {AgentConn} from '../acp/connection.js';
+import {terminalText} from '../terminal-text.js';
 import {
 	configValues,
 	findConfigOption,
@@ -708,7 +709,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				onUpdate: n => {
 				dispatch({type: 'update', update: n.update});
 				if (n.update.sessionUpdate === 'session_info_update') {
-					const t = n.update.title;
+					const t = terminalText(n.update.title ?? '').slice(0, 200);
 					try {
 						process.stdout.write(
 							`\x1b]0;${t ? `devin: ${t}` : 'devin-tui'}\x07`,
@@ -720,6 +721,10 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			},
 				onPermissionRequest: req =>
 					new Promise<RequestPermissionOutcome>(res => {
+						if (permResolve.current) {
+							res({outcome: 'cancelled'});
+							return;
+						}
 						permResolve.current = res;
 						setPermSel(0);
 						setScrollOffset(0); // tail-follow so the prompt is visible

@@ -205,6 +205,8 @@ export function resolveMentions(
 		if (seen.has(abs)) continue;
 		let st: fs.Stats;
 		try {
+			const root = fs.realpathSync(cwd);
+			if (!fs.realpathSync(abs).startsWith(root + path.sep)) continue;
 			st = fs.statSync(abs);
 		} catch {
 			continue;

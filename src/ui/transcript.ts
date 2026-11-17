@@ -1,5 +1,6 @@
 import {realpathSync} from 'node:fs';
 import {basename} from 'node:path';
+import {terminalText} from '../terminal-text.js';
 import {
 	type Seg,
 	seg,
@@ -725,13 +726,13 @@ export function permissionRows(
 					? [
 							seg(' ❯ ', 'pkBold'),
 							seg(`${i + 1} `, 'pkBold'),
-							...linkify([seg(o.name, 'pkBold')]),
+							...linkify([seg(`[${o.kind}] ${terminalText(o.name)}`, 'pkBold')]),
 						]
 					: [
 							seg('   '),
 							seg(`${i + 1}`, 'faint'),
 							seg(' '),
-							...linkify([seg(o.name, 'text')]),
+							...linkify([seg(`[${o.kind}] ${terminalText(o.name)}`, 'text')]),
 						],
 				w,
 			),

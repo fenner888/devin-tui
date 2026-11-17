@@ -13,6 +13,17 @@ slash dropdown).
 
 ## Stack
 
+### Untrusted ACP output
+
+All final line text and agent session titles replace C0/C1 controls with spaces;
+only validated HTTP(S) targets may enter generated OSC 8 hyperlinks. Permission
+options display their authoritative ACP kind before their untrusted label.
+While one permission is pending, additional requests are cancelled without
+replacing it. Logs and debug captures are owner-only, in an owner-only directory.
+File mentions must resolve within the real working-directory tree, including
+through symlinks. `npm run eval` runs synthetic mock-only security regressions
+and records evidence under `evals/runs/`.
+
 - Node ≥22 (dev on v26), ESM, TypeScript, run via `tsx`.
 - Deps (pinned exact): `@agentclientprotocol/sdk`, `ink`, `react`, `zod`
   (SDK peer). Dev: `tsx`, `typescript`, `@types/react`, `@types/node`.

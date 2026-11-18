@@ -96,17 +96,11 @@ export function sessionLines(
 	const selected = ui.find
 		? matches[Math.min(ui.find.selected, matches.length - 1)]
 		: undefined;
-	const effectiveEnd = ui.find
-		? Math.min(all.length, Math.max(0, ui.find.end))
-		: Math.max(0, all.length - ui.scrollOffset);
-	const effectiveOffset = Math.max(0, all.length - effectiveEnd);
 	const dropdown = ui.slashOpen
 		? slashMenuBlock(ui.slashItems, ui.paletteSel, w, '/', ui.slashTop)
 		: ui.mentionOpen
 			? slashMenuBlock(ui.mentionItems, ui.mentionSel, w, '@')
 			: [];
-	const marker =
-		effectiveOffset > 0 ? [moreMarker(effectiveOffset, w)] : [];
 	const meta = {
 		ready: !!s.sessionId,
 		mode: displayMode(s),
@@ -126,6 +120,19 @@ export function sessionLines(
 				matches.length,
 			)
 		: inputPanel(w, ui.value, ui.cursor, ui.tick, meta, ui.chips);
+	const planHeight = plan.length > 0 ? plan.length + 1 : 0;
+	const available = Math.max(1, rows - input.length - 1 - planHeight - 1 - 3);
+	const requestedEnd = ui.find
+		? Math.min(all.length, Math.max(0, ui.find.end))
+		: Math.min(all.length, Math.max(0, all.length - ui.scrollOffset));
+	const hasMore = requestedEnd < all.length && (ui.find || all.length > available);
+	const transH = Math.max(1, available - (hasMore ? 1 : 0));
+	const effectiveEnd = ui.find
+		? requestedEnd
+		: Math.min(all.length, Math.max(transH, requestedEnd));
+	const effectiveOffset = all.length - effectiveEnd;
+	const marker =
+		effectiveOffset > 0 ? [moreMarker(effectiveOffset, w)] : [];
 	// pickers, the dropdown and the handoff confirm are POPUPS: they
 	// overlay the bottom of the transcript area (spliced in below) rather
 	// than shrinking it, so the transcript doesn't scroll when they open
@@ -142,7 +149,6 @@ export function sessionLines(
 		...(plan.length > 0 ? [blankLine(w)] : []),
 		...marker,
 	];
-	const transH = Math.max(1, rows - input.length - 1 - aux.length - 1 - 3);
 	// the picker sheds detail rows so the whole popup stack fits in the
 	// transcript area; whatever still overflows keeps its bottom rows
 	const pkMax = Math.max(

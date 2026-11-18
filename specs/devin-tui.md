@@ -724,6 +724,8 @@ Rendered with the same `pickerShell` as the model picker, same slot:
 - **Scrolling**: transcript renders to pre-wrapped `Seg[]` lines; viewport
   slice, tail-follow. PgUp/PgDn page, shift+↑/↓ line, mouse wheel 3
   lines per notch. `↓ n more` marker, faint, right-aligned above the input.
+  Scrolling past the oldest message clamps to the first full viewport;
+  transcripts shorter than the viewport stay fully visible with no marker.
 - **Mouse** (`src/mouse.ts`): xterm mouse reporting `ESC[?1000h` +
   SGR `ESC[?1006h` is enabled with the alt screen (always disabled on
   exit) so wheel notches arrive as `ESC[<64|65;x;yM` instead of the

@@ -43,6 +43,18 @@ FOCUS_RELEASE = os.environ.get("DRIVE_RELEASE", FOCUS_CLICK)
 
 
 SCENARIOS = {
+    "overscroll": [
+        (6.0, b"\r"),
+        (2.5, b"hello devin"),
+        (0.3, b"\r"),
+        (7.0, b"1"),
+        (6.0, b"\x1b[5~"),
+        *[(0.1, b"\x1b[5~") for _ in range(20)],
+        (1.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     "boot": [
         (1.2, b"\x03"),
         (0.4, b"\x03"),

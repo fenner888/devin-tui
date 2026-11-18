@@ -1,6 +1,38 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {wordLeft, wordRight} from '../src/composer.js';
+import {editGrapheme, wordLeft, wordRight} from '../src/composer.js';
+
+for (const grapheme of ['a', '😀', '👍🏽', '👨‍👩‍👧‍👦', '🇺🇸', 'e\u0301']) {
+	test(`composer edits whole graphemes: ${grapheme}`, () => {
+		const value = `hi ${grapheme}!`;
+		const start = 3;
+		const end = start + grapheme.length;
+		assert.deepEqual(editGrapheme(value, end, 'backspace'), {value: 'hi !', cursor: start});
+		assert.deepEqual(editGrapheme(value, start, 'delete'), {value: 'hi !', cursor: start});
+		assert.deepEqual(editGrapheme(value, end, 'left'), {value, cursor: start});
+		assert.deepEqual(editGrapheme(value, start, 'right'), {value, cursor: end});
+	});
+}
+
+test('composer editing is a no-op at empty input and input boundaries', () => {
+	for (const action of ['left', 'right', 'backspace', 'delete'] as const) {
+		assert.deepEqual(editGrapheme('', 0, action), {value: '', cursor: 0});
+	}
+	for (const action of ['left', 'backspace'] as const) {
+		assert.deepEqual(editGrapheme('😀', 0, action), {value: '😀', cursor: 0});
+	}
+	for (const action of ['right', 'delete'] as const) {
+		assert.deepEqual(editGrapheme('😀', 2, action), {value: '😀', cursor: 2});
+	}
+});
+
+test('composer repairs cursor offsets inside a grapheme without splitting it', () => {
+	for (const action of ['backspace', 'delete'] as const) {
+		assert.deepEqual(editGrapheme('a😀b', 2, action), {value: 'ab', cursor: 1});
+	}
+	assert.deepEqual(editGrapheme('a😀b', 2, 'left'), {value: 'a😀b', cursor: 1});
+	assert.deepEqual(editGrapheme('a😀b', 2, 'right'), {value: 'a😀b', cursor: 3});
+});
 
 test('wordLeft skips trailing punctuation and whitespace, then the word', () => {
 	const sentence = 'hello brave new world';

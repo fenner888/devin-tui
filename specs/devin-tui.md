@@ -480,6 +480,9 @@ centered overlay):
 
 ## Composer / input
 
+- **Grapheme editing**: In the prompt composer, `←`/`→` move by whole
+  graphemes; Backspace deletes the previous grapheme and Delete removes
+  the next one, preserving emoji sequences and combining marks.
 - **Multiline**: `alt+enter` (meta+return, i.e. `ESC CR`) or `ctrl+j` (a
   bare `\n` — Ink parses it as name `enter`, `input='\n'`, no modifiers)
   inserts a newline; `Enter` (`\r`, `key.return`) sends. Pasted text

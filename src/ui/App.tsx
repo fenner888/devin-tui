@@ -68,6 +68,7 @@ import {itemPlainText} from './transcript.js';
 import {
 	asImage,
 	buildBlocks,
+	editGrapheme,
 	listProjectFiles,
 	matchFile,
 	mentionToken,
@@ -3014,9 +3015,9 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			setPrompt(p => ({value: p.value.slice(0, p.cursor), cursor: p.cursor}));
 			setPaletteSel(0);
 		} else if (key.leftArrow) {
-			setPrompt(p => ({...p, cursor: Math.max(0, p.cursor - 1)}));
+			setPrompt(p => editGrapheme(p.value, p.cursor, 'left'));
 		} else if (key.rightArrow) {
-			setPrompt(p => ({...p, cursor: Math.min(p.value.length, p.cursor + 1)}));
+			setPrompt(p => editGrapheme(p.value, p.cursor, 'right'));
 		} else if (key.home || (key.ctrl && input === 'a')) {
 			setPrompt(p => ({...p, cursor: 0}));
 		} else if (key.end || (key.ctrl && input === 'e')) {
@@ -3025,19 +3026,12 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			setPrompt(p => ({value: p.value.slice(p.cursor), cursor: 0}));
 			setPaletteSel(0);
 		} else if (key.backspace || key.delete) {
-			if (prompt.cursor === 0 && attsRef.current.length > 0) {
+			if (key.backspace && prompt.cursor === 0 && attsRef.current.length > 0) {
 				// backspace on an empty input pops the last attachment chip
 				setAtts(prev => prev.slice(0, -1));
 			} else {
 				setPrompt(p =>
-					p.cursor > 0
-						? {
-								value:
-									p.value.slice(0, p.cursor - 1) +
-									p.value.slice(p.cursor),
-								cursor: p.cursor - 1,
-							}
-						: p,
+					editGrapheme(p.value, p.cursor, key.backspace ? 'backspace' : 'delete'),
 				);
 				setPaletteSel(0);
 			}

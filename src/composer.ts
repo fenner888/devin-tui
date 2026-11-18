@@ -8,6 +8,24 @@ import type {ContentBlock} from '@agentclientprotocol/sdk';
 
 const execFileP = promisify(execFile);
 const WORD_CHAR = /[\p{L}\p{N}_]/u;
+const graphemes = new Intl.Segmenter(undefined, {granularity: 'grapheme'});
+
+export function editGrapheme(
+	value: string,
+	cursor: number,
+	action: 'left' | 'right' | 'backspace' | 'delete',
+): {value: string; cursor: number} {
+	const segments = graphemes.segment(value);
+	const segment = segments.containing(
+		action === 'left' || action === 'backspace' ? cursor - 1 : cursor,
+	);
+	if (!segment) return {value, cursor};
+	const start = segment.index;
+	const end = start + segment.segment.length;
+	if (action === 'left') return {value, cursor: start};
+	if (action === 'right') return {value, cursor: end};
+	return {value: value.slice(0, start) + value.slice(end), cursor: start};
+}
 
 function previousCharStart(value: string, end: number): number {
 	const code = value.charCodeAt(end - 1);

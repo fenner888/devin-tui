@@ -714,8 +714,10 @@ Rendered with the same `pickerShell` as the model picker, same slot:
   `↳ queued: <text>` rows (truncated to one line) above the activity row.
   On turn end the queue is sent automatically as ONE prompt joined by
   blank lines; if the turn was cancelled the queue survives and is
-  prepended to the next Enter. `/clear`, `/logout` and `/model` stay
-  blocked while working.
+  prepended to the next Enter (an empty Enter sends it alone). Queued
+  image chips travel with the queued text in every case and are dropped
+  with it on `/clear`, `/logout` and session load. `/clear`, `/logout`
+  and `/model` stay blocked while working.
 - **Plan block**: compact, separated from the transcript and the input panel
   by one blank row each — `Plan <done>/<total>` muted header, entries `○`
   pending muted / `◐` in_progress bright / `●` completed faint, max 5 rows +

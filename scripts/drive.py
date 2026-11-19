@@ -427,6 +427,32 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
+    # queued image survives a cancel: queue text + image while working,
+    # cancel, empty Enter -> fake log prompt #3 text,image; the next
+    # unrelated prompt #4 must be text only
+    "queueimage": [
+        (6.0, b"\r"),             # needsAuth -> auth -> ready
+        (2.5, b"first"),
+        (0.3, b"\r"),             # prompt #1
+        (9.0, b"1"),              # permission -> Allow
+        (6.0, b"second"),
+        (0.3, b"\r"),             # prompt #2: slow turn
+        (3.0, b"queued guidance "),
+        (0.5, b"\x1b[200~/tmp/devin-tui-test.png\x1b[201~"),  # image chip
+        (1.5, b"\r"),             # -> queued row with the chip stashed
+        (1.0, ESC),
+        (0.5, ESC),               # cancel; the queue survives
+        (2.0, b"\r"),             # empty Enter flushes the queue (prompt #3)
+        (4.0, ESC),
+        (0.5, ESC),               # cancel prompt #3
+        (2.0, b"unrelated"),
+        (0.3, b"\r"),             # prompt #4
+        (4.0, ESC),
+        (0.5, ESC),
+        (1.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
     # an attached image deleted before Enter: system line, draft and app
     # survive, nothing is sent (missing-image.png)
     "missingimage": [

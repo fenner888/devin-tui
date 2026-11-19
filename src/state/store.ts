@@ -8,6 +8,7 @@ import type {
 	ToolCallStatus,
 	ToolKind,
 } from '@agentclientprotocol/sdk';
+import type {ImageAttachment} from '../composer.js';
 import type {TurnStat} from '../spend.js';
 
 export type Status =
@@ -122,6 +123,8 @@ export interface State {
 	updateAvailable?: string;
 	/** prompts typed while working — sent as one prompt when the turn ends */
 	queued: string[];
+	/** image chips submitted with queued prompts — sent with the queue */
+	queuedImages: ImageAttachment[];
 	/** ctrl+o — expand completed command blocks (collapsed by default) */
 	expandTools: boolean;
 	/** session/load in flight — transcript replays into a fresh session */
@@ -157,6 +160,7 @@ export function initialState(cwd: string, model: string | undefined, logFile: st
 		toolCalls: 0,
 		sidebar: true,
 		queued: [],
+		queuedImages: [],
 		expandTools: false,
 		loading: false,
 		echoBuf: '',
@@ -188,7 +192,7 @@ export type Action =
 	| {type: 'clear'}
 	| {type: 'toggleSidebar'}
 	| {type: 'setMode'; mode: string}
-	| {type: 'queueMsg'; text: string}
+	| {type: 'queueMsg'; text: string; images: ImageAttachment[]}
 	| {type: 'clearQueue'}
 	| {type: 'toggleExpandTools'}
 	| {type: 'loadStart'}
@@ -429,6 +433,7 @@ export function reducer(state: State, action: Action): State {
 				permission: undefined,
 				authError: undefined,
 				queued: [],
+				queuedImages: [],
 				usage: undefined,
 				reportedCost: undefined,
 				turnStats: [],
@@ -457,6 +462,7 @@ export function reducer(state: State, action: Action): State {
 				turnStartedAt: Date.now(),
 				permission: undefined,
 				queued: [],
+				queuedImages: [],
 				usage: undefined,
 				reportedCost: undefined,
 				turnStats: [],
@@ -533,6 +539,7 @@ export function reducer(state: State, action: Action): State {
 				toolCalls: 0,
 				turnStartedAt: undefined,
 				queued: [],
+				queuedImages: [],
 				usage: undefined,
 				reportedCost: undefined,
 				turnStats: [],
@@ -545,9 +552,13 @@ export function reducer(state: State, action: Action): State {
 		case 'setMode':
 			return {...state, mode: action.mode};
 		case 'queueMsg':
-			return {...state, queued: [...state.queued, action.text]};
+			return {
+				...state,
+				queued: [...state.queued, action.text],
+				queuedImages: [...state.queuedImages, ...action.images],
+			};
 		case 'clearQueue':
-			return {...state, queued: []};
+			return {...state, queued: [], queuedImages: []};
 		case 'toggleExpandTools':
 			return {...state, expandTools: !state.expandTools};
 		case 'notice':

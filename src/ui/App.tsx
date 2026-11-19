@@ -403,8 +403,6 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	filesRef.current = files;
 	const attsRef = useRef<ImageAttachment[]>(atts);
 	attsRef.current = atts;
-	/** image attachments stashed with queued guidance while working */
-	const queuedAtts = useRef<ImageAttachment[]>([]);
 	const panelOpenRef = useRef(panelOpen);
 	panelOpenRef.current = panelOpen;
 	const helpOpenRef = useRef(helpOpen);
@@ -1461,6 +1459,20 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		}
 	}, []);
 
+	/** Drain queued guidance and its images as one bundle, ahead of the
+	 *  prompt text/images typed now. */
+	const takeQueue = useCallback(
+		(t = '', images: ImageAttachment[] = []) => {
+			const {queued, queuedImages} = stateRef.current;
+			if (queued.length > 0) dispatch({type: 'clearQueue'});
+			return {
+				text: [...queued, t].filter(Boolean).join('\n\n'),
+				images: [...queuedImages, ...images],
+			};
+		},
+		[],
+	);
+
 	/** Send one prompt; on a clean turn end, flush queued guidance into the
 	 *  next prompt automatically. Self-referenced via sendPromptRef. */
 	const sendPromptRef = useRef<(t: string, images?: ImageAttachment[]) => void>(
@@ -1494,20 +1506,16 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 					dispatch({type: 'systemMsg', text: 'turn cancelled'});
 					return; // cancelled turns keep the queue for the next Enter
 				}
-				const q = stateRef.current.queued;
-				if (q.length > 0) {
-					dispatch({type: 'clearQueue'});
-					sendPromptRef.current(
-						q.join('\n\n'),
-						queuedAtts.current.splice(0),
-					);
+				if (stateRef.current.queued.length > 0) {
+					const next = takeQueue();
+					sendPromptRef.current(next.text, next.images);
 				}
 			})
 			.catch(e => {
 				dispatch({type: 'turnEnd', stopReason: 'error'});
 				dispatch({type: 'systemMsg', text: `error: ${errMsg(e)}`});
 			});
-	}, []);
+	}, [takeQueue]);
 	sendPromptRef.current = sendPrompt;
 
 	/** Refresh the cwd's git branch into state — fire-and-forget; only
@@ -1565,8 +1573,8 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			if (!t) {
 				// empty Enter while idle flushes a pending queue
 				if (!working && s.queued.length > 0) {
-					dispatch({type: 'clearQueue'});
-					sendPrompt(s.queued.join('\n\n'));
+					const next = takeQueue();
+					sendPrompt(next.text, next.images);
 				}
 				return;
 			}
@@ -1745,8 +1753,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			// while the agent works; it's sent when the turn ends. Image
 			// attachments ride along with the queued text.
 			if (working) {
-				dispatch({type: 'queueMsg', text: t});
-				queuedAtts.current.push(...attsRef.current);
+				dispatch({type: 'queueMsg', text: t, images: attsRef.current});
 				setAtts([]);
 				setPrompt({value: '', cursor: 0});
 				setPaletteSel(0);
@@ -1770,13 +1777,11 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				})();
 				return;
 			}
-			// queued text survives a cancelled turn — prepend it here
-			const q = s.queued;
-			const full = q.length > 0 ? `${q.join('\n\n')}\n\n${t}` : t;
-			if (q.length > 0) dispatch({type: 'clearQueue'});
-			sendPrompt(full, [...queuedAtts.current.splice(0), ...imgs]);
+			// the queue survives a cancelled turn — prepend it here
+			const next = takeQueue(t, imgs);
+			sendPrompt(next.text, next.images);
 		},
-		[onQuit, openSession, flash, openPicker, openFind, openCloud, doLogin, doLogout, doStatus, copyReply, doUpdate, sendPrompt, updateSetting, openTheme],
+		[onQuit, openSession, flash, openPicker, openFind, openCloud, doLogin, doLogout, doStatus, copyReply, doUpdate, sendPrompt, takeQueue, updateSetting, openTheme],
 	);
 
 	const cycleMode = useCallback(() => {

@@ -1459,39 +1459,49 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		}
 	}, []);
 
-	/** Drain queued guidance and its images as one bundle, ahead of the
-	 *  prompt text/images typed now. */
-	const takeQueue = useCallback(
+	/** Send one prompt; on a clean turn end, flush queued guidance into the
+	 *  next prompt automatically. Self-referenced via sendPromptRef. When an
+	 *  attached image can no longer be read nothing is sent and the
+	 *  unreadable images are returned, so callers keep the draft. */
+	const sendPromptRef = useRef<
+		(t: string, images?: ImageAttachment[]) => ImageAttachment[]
+	>(() => []);
+
+	/** Send queued guidance and its images as one bundle, ahead of the
+	 *  prompt text/images typed now. The queue is cleared only once the
+	 *  prompt is sent; a refused send drops just its unreadable images. */
+	const sendWithQueue = useCallback(
 		(t = '', images: ImageAttachment[] = []) => {
 			const {queued, queuedImages} = stateRef.current;
-			if (queued.length > 0) dispatch({type: 'clearQueue'});
-			return {
-				text: [...queued, t].filter(Boolean).join('\n\n'),
-				images: [...queuedImages, ...images],
-			};
+			const unreadable = sendPromptRef.current(
+				[...queued, t].filter(Boolean).join('\n\n'),
+				[...queuedImages, ...images],
+			);
+			if (unreadable.length > 0) {
+				if (queuedImages.some(a => unreadable.includes(a)))
+					dispatch({type: 'dropQueuedImages', images: unreadable});
+			} else if (queued.length > 0) {
+				dispatch({type: 'clearQueue'});
+			}
+			return unreadable;
 		},
 		[],
 	);
 
-	/** Send one prompt; on a clean turn end, flush queued guidance into the
-	 *  next prompt automatically. Self-referenced via sendPromptRef. */
-	const sendPromptRef = useRef<(t: string, images?: ImageAttachment[]) => void>(
-		() => {},
-	);
 	const sendPrompt = useCallback((t: string, images: ImageAttachment[] = []) => {
 		const conn = connRef.current;
-		if (!conn || !t) return;
-		history.current.push(t);
-		histIdx.current = -1;
+		if (!conn || !t) return [];
 		// an image read throws synchronously, outside the prompt's .catch
 		const {blocks, unreadable} = buildBlocks(t, images, stateRef.current.cwd);
 		if (unreadable.length > 0) {
 			dispatch({
 				type: 'systemMsg',
-				text: `image no longer readable: ${unreadable.map(a => a.name).join(', ')} (not sent; ↑ recalls the text)`,
+				text: `image no longer readable: ${unreadable.map(a => a.name).join(', ')} (not sent)`,
 			});
-			return;
+			return unreadable;
 		}
+		history.current.push(t);
+		histIdx.current = -1;
 		dispatch({type: 'userSubmit', text: t});
 		conn
 			.prompt(blocks)
@@ -1506,16 +1516,14 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 					dispatch({type: 'systemMsg', text: 'turn cancelled'});
 					return; // cancelled turns keep the queue for the next Enter
 				}
-				if (stateRef.current.queued.length > 0) {
-					const next = takeQueue();
-					sendPromptRef.current(next.text, next.images);
-				}
+				if (stateRef.current.queued.length > 0) sendWithQueue();
 			})
 			.catch(e => {
 				dispatch({type: 'turnEnd', stopReason: 'error'});
 				dispatch({type: 'systemMsg', text: `error: ${errMsg(e)}`});
 			});
-	}, [takeQueue]);
+		return [];
+	}, [sendWithQueue]);
 	sendPromptRef.current = sendPrompt;
 
 	/** Refresh the cwd's git branch into state — fire-and-forget; only
@@ -1572,10 +1580,7 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			if (!conn) return;
 			if (!t) {
 				// empty Enter while idle flushes a pending queue
-				if (!working && s.queued.length > 0) {
-					const next = takeQueue();
-					sendPrompt(next.text, next.images);
-				}
+				if (!working && s.queued.length > 0) sendWithQueue();
 				return;
 			}
 			// like the Devin CLI: /exit, /quit, or bare `exit` / `quit`
@@ -1761,10 +1766,13 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				return;
 			}
 			const imgs = attsRef.current;
-			setAtts([]);
-			setPrompt({value: '', cursor: 0});
-			setPaletteSel(0);
+			const clearDraft = () => {
+				setAtts([]);
+				setPrompt({value: '', cursor: 0});
+				setPaletteSel(0);
+			};
 			if (t === '/clear') {
+				clearDraft();
 				(async () => {
 					try {
 						dispatch({type: 'clear'});
@@ -1777,11 +1785,16 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				})();
 				return;
 			}
-			// the queue survives a cancelled turn — prepend it here
-			const next = takeQueue(t, imgs);
-			sendPrompt(next.text, next.images);
+			// the queue survives a cancelled turn — prepend it here; a refused
+			// send keeps the draft and drops only the unreadable chips
+			const unreadable = sendWithQueue(t, imgs);
+			if (unreadable.length > 0) {
+				setAtts(imgs.filter(a => !unreadable.includes(a)));
+				return;
+			}
+			clearDraft();
 		},
-		[onQuit, openSession, flash, openPicker, openFind, openCloud, doLogin, doLogout, doStatus, copyReply, doUpdate, sendPrompt, takeQueue, updateSetting, openTheme],
+		[onQuit, openSession, flash, openPicker, openFind, openCloud, doLogin, doLogout, doStatus, copyReply, doUpdate, sendWithQueue, updateSetting, openTheme],
 	);
 
 	const cycleMode = useCallback(() => {

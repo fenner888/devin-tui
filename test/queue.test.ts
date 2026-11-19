@@ -27,3 +27,11 @@ for (const action of [{type: 'clear'}, {type: 'logout'}, {type: 'loadStart'}] as
 		assert.deepEqual(s.queuedImages, []);
 	});
 }
+
+test('dropQueuedImages removes only the named images and keeps the queued text', () => {
+	const other: ImageAttachment = {path: '/tmp/other.png', name: 'other.png', mimeType: 'image/png'};
+	let s = reducer(queuedWithImage(), {type: 'queueMsg', text: 'and this', images: [other]});
+	s = reducer(s, {type: 'dropQueuedImages', images: [shot]});
+	assert.deepEqual(s.queued, ['look at this', 'and this']);
+	assert.deepEqual(s.queuedImages, [other]);
+});

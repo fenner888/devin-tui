@@ -194,6 +194,7 @@ export type Action =
 	| {type: 'setMode'; mode: string}
 	| {type: 'queueMsg'; text: string; images: ImageAttachment[]}
 	| {type: 'clearQueue'}
+	| {type: 'dropQueuedImages'; images: ImageAttachment[]}
 	| {type: 'toggleExpandTools'}
 	| {type: 'loadStart'}
 	| {type: 'loadEnd'}
@@ -559,6 +560,11 @@ export function reducer(state: State, action: Action): State {
 			};
 		case 'clearQueue':
 			return {...state, queued: [], queuedImages: []};
+		case 'dropQueuedImages':
+			return {
+				...state,
+				queuedImages: state.queuedImages.filter(a => !action.images.includes(a)),
+			};
 		case 'toggleExpandTools':
 			return {...state, expandTools: !state.expandTools};
 		case 'notice':

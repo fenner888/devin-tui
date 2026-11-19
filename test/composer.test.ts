@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
-import {editGrapheme, wordLeft, wordRight} from '../src/composer.js';
+import {
+	asImage,
+	buildBlocks,
+	editGrapheme,
+	wordLeft,
+	wordRight,
+} from '../src/composer.js';
 
 for (const grapheme of ['a', '😀', '👍🏽', '👨‍👩‍👧‍👦', '🇺🇸', 'e\u0301']) {
 	test(`composer edits whole graphemes: ${grapheme}`, () => {
@@ -59,4 +68,27 @@ test('word boundaries treat astral Unicode letters as one word character', () =>
 
 test('wordRight treats newlines as separators', () => {
 	assert.equal(wordRight('hello\nworld', 5), 11);
+});
+
+test('buildBlocks reports an image that vanished after attaching instead of throwing', () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'devin-tui-blocks-'));
+	const kept = path.join(dir, 'kept.png');
+	const gone = path.join(dir, 'gone.png');
+	fs.writeFileSync(kept, 'png');
+	fs.writeFileSync(gone, 'png');
+	const keptAtt = asImage(kept, dir);
+	const goneAtt = asImage(gone, dir);
+	assert.ok(keptAtt && keptAtt !== 'tooLarge');
+	assert.ok(goneAtt && goneAtt !== 'tooLarge');
+	fs.rmSync(gone);
+	try {
+		const {blocks, unreadable} = buildBlocks('inspect', [keptAtt, goneAtt], dir);
+		assert.deepEqual(unreadable, [goneAtt]);
+		assert.deepEqual(
+			blocks.map(b => b.type),
+			['text', 'image'],
+		);
+	} finally {
+		fs.rmSync(dir, {recursive: true, force: true});
+	}
 });

@@ -303,13 +303,16 @@ export function asImage(
 
 /** The ACP content blocks for a prompt: the text block (keeping the
  *  original `@path` tokens), one resource_link per resolved mention, then
- *  one base64 image block per attachment. */
+ *  one base64 image block per attachment. Attachments whose file can no
+ *  longer be read (deleted or moved since it was attached) are returned
+ *  in `unreadable` instead of throwing. */
 export function buildBlocks(
 	text: string,
 	images: ImageAttachment[],
 	cwd: string,
-): ContentBlock[] {
+): {blocks: ContentBlock[]; unreadable: ImageAttachment[]} {
 	const blocks: ContentBlock[] = [{type: 'text', text}];
+	const unreadable: ImageAttachment[] = [];
 	for (const m of resolveMentions(text, cwd)) {
 		blocks.push({
 			type: 'resource_link',
@@ -318,11 +321,14 @@ export function buildBlocks(
 		});
 	}
 	for (const a of images) {
-		blocks.push({
-			type: 'image',
-			mimeType: a.mimeType,
-			data: fs.readFileSync(a.path).toString('base64'),
-		});
+		let data: string;
+		try {
+			data = fs.readFileSync(a.path).toString('base64');
+		} catch {
+			unreadable.push(a);
+			continue;
+		}
+		blocks.push({type: 'image', mimeType: a.mimeType, data});
 	}
-	return blocks;
+	return {blocks, unreadable};
 }

@@ -437,6 +437,8 @@ SCENARIOS = {
         (1.5, lambda: os.remove(VANISH_PNG)),
         (0.3, b"\r"),            # send with the file gone
         (2.0, b""),               # missing-image.png
+        (0.3, b"\x1b[A"),         # recall the unsent text
+        (1.0, b""),
         (0.5, b"\x03"),
         (0.4, b"\x03"),
         (1.0, b""),

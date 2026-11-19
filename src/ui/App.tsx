@@ -1469,17 +1469,17 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	const sendPrompt = useCallback((t: string, images: ImageAttachment[] = []) => {
 		const conn = connRef.current;
 		if (!conn || !t) return;
+		history.current.push(t);
+		histIdx.current = -1;
 		// an image read throws synchronously, outside the prompt's .catch
 		const {blocks, unreadable} = buildBlocks(t, images, stateRef.current.cwd);
 		if (unreadable.length > 0) {
 			dispatch({
 				type: 'systemMsg',
-				text: `image no longer readable: ${unreadable.map(a => a.name).join(', ')} (not sent)`,
+				text: `image no longer readable: ${unreadable.map(a => a.name).join(', ')} (not sent; ↑ recalls the text)`,
 			});
 			return;
 		}
-		history.current.push(t);
-		histIdx.current = -1;
 		dispatch({type: 'userSubmit', text: t});
 		conn
 			.prompt(blocks)

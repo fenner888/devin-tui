@@ -9,6 +9,9 @@ scenarios:
   short  - prompt, permission 'y', quit (for the 80-col layout)
   recent - show the recent-session Home line and open Resume
   cloud  - list, open, and reply to a cloud Devin session via the fake API
+
+An event's keys may be a callable instead of bytes; it runs at that point
+(e.g. to delete a file mid-run).
 """
 import fcntl
 import os
@@ -20,6 +23,7 @@ import termios
 import time
 
 ESC = b"\x1b"
+VANISH_PNG = "/tmp/devin-tui-vanish.png"
 
 
 def _click_bytes(spec=None) -> bytes:
@@ -419,6 +423,20 @@ SCENARIOS = {
         (0.3, b"\r"),             # send -> fake log: text,resource_link,image
         (9.0, b"1"),              # permission -> Allow
         (6.0, b""),
+        (0.5, b"\x03"),
+        (0.4, b"\x03"),
+        (1.0, b""),
+    ],
+    # an attached image deleted before Enter: system line, draft and app
+    # survive, nothing is sent (missing-image.png)
+    "missingimage": [
+        (0.0, lambda: open(VANISH_PNG, "wb").close()),
+        (6.0, b"\r"),            # needsAuth -> auth -> ready
+        (2.5, b"inspect "),
+        (0.5, b"\x1b[200~" + VANISH_PNG.encode() + b"\x1b[201~"),
+        (1.5, lambda: os.remove(VANISH_PNG)),
+        (0.3, b"\r"),            # send with the file gone
+        (2.0, b""),               # missing-image.png
         (0.5, b"\x03"),
         (0.4, b"\x03"),
         (1.0, b""),
@@ -1072,7 +1090,9 @@ def main() -> int:
                 out.write(data)
         if not alive:
             break
-        if keys:
+        if callable(keys):
+            keys()
+        elif keys:
             try:
                 os.write(fd, keys)
             except OSError:

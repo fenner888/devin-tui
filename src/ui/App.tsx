@@ -1462,16 +1462,26 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 	}, []);
 
 	/** Send one prompt; on a clean turn end, flush queued guidance into the
-	 *  next prompt automatically. Self-referenced via sendPromptRef. */
-	const sendPromptRef = useRef<(t: string, images?: ImageAttachment[]) => void>(
-		() => {},
-	);
+	 *  next prompt automatically. Self-referenced via sendPromptRef. When an
+	 *  attached image can no longer be read, nothing is sent: a system line
+	 *  names it and the unreadable attachments are returned so the caller
+	 *  can drop them and keep the draft. */
+	const sendPromptRef = useRef<
+		(t: string, images?: ImageAttachment[]) => ImageAttachment[]
+	>(() => []);
 	const sendPrompt = useCallback((t: string, images: ImageAttachment[] = []) => {
 		const conn = connRef.current;
-		if (!conn || !t) return;
+		if (!conn || !t) return [];
+		const {blocks, unreadable} = buildBlocks(t, images, stateRef.current.cwd);
+		if (unreadable.length > 0) {
+			dispatch({
+				type: 'systemMsg',
+				text: `image no longer readable: ${unreadable.map(a => a.name).join(', ')} (not sent)`,
+			});
+			return unreadable;
+		}
 		history.current.push(t);
 		histIdx.current = -1;
-		const blocks = buildBlocks(t, images, stateRef.current.cwd);
 		dispatch({type: 'userSubmit', text: t});
 		conn
 			.prompt(blocks)
@@ -1488,17 +1498,18 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				}
 				const q = stateRef.current.queued;
 				if (q.length > 0) {
-					dispatch({type: 'clearQueue'});
-					sendPromptRef.current(
-						q.join('\n\n'),
-						queuedAtts.current.splice(0),
-					);
+					const imgs = queuedAtts.current;
+					const unreadable = sendPromptRef.current(q.join('\n\n'), imgs);
+					// on failure the queue stays for the next Enter
+					queuedAtts.current = imgs.filter(a => !unreadable.includes(a));
+					if (unreadable.length === 0) dispatch({type: 'clearQueue'});
 				}
 			})
 			.catch(e => {
 				dispatch({type: 'turnEnd', stopReason: 'error'});
 				dispatch({type: 'systemMsg', text: `error: ${errMsg(e)}`});
 			});
+		return [];
 	}, []);
 	sendPromptRef.current = sendPrompt;
 
@@ -1746,10 +1757,13 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 				return;
 			}
 			const imgs = attsRef.current;
-			setAtts([]);
-			setPrompt({value: '', cursor: 0});
-			setPaletteSel(0);
+			const clearDraft = () => {
+				setAtts([]);
+				setPrompt({value: '', cursor: 0});
+				setPaletteSel(0);
+			};
 			if (t === '/clear') {
+				clearDraft();
 				(async () => {
 					try {
 						dispatch({type: 'clear'});
@@ -1765,8 +1779,17 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 			// queued text survives a cancelled turn — prepend it here
 			const q = s.queued;
 			const full = q.length > 0 ? `${q.join('\n\n')}\n\n${t}` : t;
+			const queuedImgs = queuedAtts.current;
+			const unreadable = sendPrompt(full, [...queuedImgs, ...imgs]);
+			if (unreadable.length > 0) {
+				// keep the draft and queue; drop only the unreadable chips
+				queuedAtts.current = queuedImgs.filter(a => !unreadable.includes(a));
+				setAtts(imgs.filter(a => !unreadable.includes(a)));
+				return;
+			}
+			queuedAtts.current = [];
 			if (q.length > 0) dispatch({type: 'clearQueue'});
-			sendPrompt(full, [...queuedAtts.current.splice(0), ...imgs]);
+			clearDraft();
 		},
 		[onQuit, openSession, flash, openPicker, openFind, openCloud, doLogin, doLogout, doStatus, copyReply, doUpdate, sendPrompt, updateSetting, openTheme],
 	);

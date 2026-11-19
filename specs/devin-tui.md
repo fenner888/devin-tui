@@ -519,7 +519,11 @@ centered overlay):
   and `~` are unwrapped, matching terminal drag-and-drop) is removed
   from the text and becomes a `▣ <name>` chip. On send each chip adds an
   `image` block `{type:'image', mimeType, data:<base64>}`; files over
-  5 MB are skipped with an `image too large` system line. Backspace at
+  5 MB are skipped with an `image too large` system line. If a chip's
+  file can no longer be read at send time (deleted or moved), nothing is
+  sent: an `image no longer readable: <name> (not sent)` system line
+  appears, that chip is dropped, and the draft text, other chips and any
+  queued guidance stay for the next Enter. Backspace at
   the start of an empty input pops the last chip. Image attachments ride
   along with queued guidance submitted while `working`.
 - Prompts are sent as `session/prompt` content blocks: the text block
@@ -1114,7 +1118,9 @@ state to `needsAuth`.
   `resume`/`continue`/`resumeid` cover the /resume picker, `-c` and
   `-r`; `multiline`/`multiline80` cover alt+enter/ctrl+j/bracketed-paste
   newlines; `mention` covers the `@` dropdown; `attachments` covers the
-  ⌗/▣ chips and the `text,resource_link,image` prompt; `realedit` (with
+  ⌗/▣ chips and the `text,resource_link,image` prompt; `missingimage`
+  deletes an attached image before Enter (system line, draft kept, no
+  prompt sent, no crash); `realedit` (with
   `DRIVE_AGENT=real DRIVE_CWD=<scratch repo>`) is the real-Devin edit
   test; `pricing`/`pricing80` cover the catalog pricing block (priced,
   FREE, fusion pair, 80x24 shedding — needs `DEVIN_TUI_MODELS_FILE`);

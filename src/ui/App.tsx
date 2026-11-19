@@ -1483,7 +1483,15 @@ export function App({cwd, model, command, resume, onQuit, onConn}: Props): React
 		if (!conn || !t) return;
 		history.current.push(t);
 		histIdx.current = -1;
-		const blocks = buildBlocks(t, images, stateRef.current.cwd);
+		// an image read throws synchronously, outside the prompt's .catch
+		const {blocks, unreadable} = buildBlocks(t, images, stateRef.current.cwd);
+		if (unreadable.length > 0) {
+			dispatch({
+				type: 'systemMsg',
+				text: `image no longer readable: ${unreadable.map(a => a.name).join(', ')} (not sent; ↑ recalls the text)`,
+			});
+			return;
+		}
 		dispatch({type: 'userSubmit', text: t});
 		conn
 			.prompt(blocks)

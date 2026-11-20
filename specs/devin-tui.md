@@ -521,9 +521,10 @@ centered overlay):
   `image` block `{type:'image', mimeType, data:<base64>}`; files over
   5 MB are skipped with an `image too large` system line. If a chip's
   file can no longer be read at send time (deleted or moved), nothing is
-  sent and an `image no longer readable: <name> (not sent; ↑ recalls
-  the text)` system line appears instead of a crash; the text is in
-  history, so ↑ restores it. Backspace at
+  sent: an `image no longer readable: <name> (not sent)` system line
+  appears, that chip is dropped, and the draft text, the other chips and
+  any queued guidance (with its readable images) stay for the next
+  Enter. This also applies to the automatic flush of queued guidance. Backspace at
   the start of an empty input pops the last chip. Image attachments ride
   along with queued guidance submitted while `working`.
 - Prompts are sent as `session/prompt` content blocks: the text block
@@ -1121,8 +1122,10 @@ state to `needsAuth`.
   `-r`; `multiline`/`multiline80` cover alt+enter/ctrl+j/bracketed-paste
   newlines; `mention` covers the `@` dropdown; `attachments` covers the
   ⌗/▣ chips and the `text,resource_link,image` prompt; `missingimage`
-  deletes an attached image before Enter (system line, no prompt sent,
-  no crash, ↑ recalls the text); `realedit` (with
+  deletes one of two attached images before Enter (system line, draft
+  and readable chip kept, retry sends `text,image`); `missingqueued`
+  deletes a queued image before the turn ends (auto-flush refused, queue
+  kept, empty Enter sends it as `text`); `realedit` (with
   `DRIVE_AGENT=real DRIVE_CWD=<scratch repo>`) is the real-Devin edit
   test; `pricing`/`pricing80` cover the catalog pricing block (priced,
   FREE, fusion pair, 80x24 shedding — needs `DEVIN_TUI_MODELS_FILE`);

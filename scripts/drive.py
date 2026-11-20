@@ -24,6 +24,7 @@ import time
 
 ESC = b"\x1b"
 VANISH_PNG = "/tmp/devin-tui-vanish.png"
+KEEP_PNG = "/tmp/devin-tui-keep.png"
 
 
 def _click_bytes(spec=None) -> bytes:
@@ -453,19 +454,43 @@ SCENARIOS = {
         (0.4, b"\x03"),
         (1.0, b""),
     ],
-    # an attached image deleted before Enter: system line, draft and app
-    # survive, nothing is sent (missing-image.png)
+    # an attached image deleted before Enter: nothing is sent, the system
+    # line names it, and the draft text plus the readable chip stay; the
+    # next Enter sends them (fake log prompt #1 text,image)
     "missingimage": [
-        (0.0, lambda: open(VANISH_PNG, "wb").close()),
+        (0.0, lambda: [open(f, "wb").close() for f in (VANISH_PNG, KEEP_PNG)]),
         (6.0, b"\r"),            # needsAuth -> auth -> ready
         (2.5, b"inspect "),
+        (0.5, b"\x1b[200~" + KEEP_PNG.encode() + b"\x1b[201~"),
         (0.5, b"\x1b[200~" + VANISH_PNG.encode() + b"\x1b[201~"),
         (1.5, lambda: os.remove(VANISH_PNG)),
-        (0.3, b"\r"),            # send with the file gone
-        (2.0, b""),               # missing-image.png
-        (0.3, b"\x1b[A"),         # recall the unsent text
+        (0.3, b"\r"),            # send with one file gone -> refused
+        (2.0, b""),               # missing-image.png: draft + keep chip
+        (0.3, b"\r"),            # retry -> prompt #1 text,image
+        (4.0, b"\x03"),
+        (0.4, b"\x03"),
         (1.0, b""),
-        (0.5, b"\x03"),
+    ],
+    # queued guidance whose image vanishes before the turn ends: the
+    # auto-flush is refused and the queue stays (minus that image); an
+    # empty Enter then sends it (fake log prompt #3 text only)
+    "missingqueued": [
+        (0.0, lambda: open(VANISH_PNG, "wb").close()),
+        (6.0, b"\r"),            # needsAuth -> auth -> ready
+        (2.5, b"first"),
+        (0.3, b"\r"),            # prompt #1
+        (9.0, b"1"),              # permission -> Allow
+        (6.0, b"second"),
+        (0.3, b"\r"),            # prompt #2: slow turn (~12s)
+        (3.0, b"queued guidance "),
+        (0.5, b"\x1b[200~" + VANISH_PNG.encode() + b"\x1b[201~"),
+        (1.5, b"\r"),            # -> queued row with the chip stashed
+        (0.5, lambda: os.remove(VANISH_PNG)),
+        (12.0, b""),              # turn ends; auto-flush refused
+        (0.5, b"\r"),            # empty Enter flushes the queue (prompt #3)
+        (1.0, ESC),
+        (0.5, ESC),
+        (1.5, b"\x03"),
         (0.4, b"\x03"),
         (1.0, b""),
     ],
